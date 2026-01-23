@@ -43,18 +43,7 @@ pipeline {
   }
   steps {
     powershell '''
-docker run --rm `
-  -e SONAR_HOST_URL=http://host.docker.internal:9000 `
-  -e SONAR_TOKEN="$env:SONAR_TOKEN" `
-  -v "$env:WORKSPACE:/usr/src" `
-  -w "/usr/src" `
-  sonarsource/sonar-scanner-cli:latest `
-  -Dsonar.projectKey=student-api-devops `
-  -Dsonar.projectName=Student-API-DevOps `
-  -Dsonar.sources=src `
-  -Dsonar.tests=tests `
-  -Dsonar.test.inclusions=tests/**/*.js `
-  -Dsonar.login="$env:SONAR_TOKEN"
+    docker run --rm -e SONAR_HOST_URL=http://host.docker.internal:9000 -e SONAR_TOKEN="$env:SONAR_TOKEN" -v "$env:WORKSPACE:/usr/src" -w /usr/src sonarsource/sonar-scanner-cli:latest -Dsonar.projectKey=student-api-devops -Dsonar.projectName=Student-API-DevOps -Dsonar.sources=src -Dsonar.tests=tests -Dsonar.test.inclusions=tests/**/*.js -Dsonar.login="$env:SONAR_TOKEN"
 '''
   }
 }
