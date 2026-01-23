@@ -38,15 +38,31 @@ pipeline {
     }
 
    stage('Code Quality (SonarQube Scan - Docker)') {
-      environment {
-        SONAR_TOKEN = credentials('sonar-token')
-      }
-      steps {
-        powershell '''
-    docker run --rm -e SONAR_HOST_URL=http://host.docker.internal:9000 -e SONAR_TOKEN="$env:SONAR_TOKEN" -v "$env:WORKSPACE:/usr/src" -w /usr/src sonarsource/sonar-scanner-cli:latest sonar-scanner --define "sonar.projectKey=student-api-devops" --define "sonar.projectName=Student-API-DevOps" --define "sonar.sources=src" --define "sonar.tests=tests" --define "sonar.test.inclusions=tests/**/*.js" --define "sonar.exclusions=**/node_modules/**" --define "sonar.login=$env:SONAR_TOKEN"
+  environment {
+    SONAR_TOKEN = credentials('sonar-token')
+  }
+  steps {
+    powershell '''
+docker run --rm `
+  -e SONAR_HOST_URL="http://host.docker.internal:9000" `
+  -e SONAR_TOKEN="$env:SONAR_TOKEN" `
+  -v "$env:WORKSPACE:/usr/src" `
+  -w /usr/src `
+  sonarsource/sonar-scanner-cli:latest `
+  sonar-scanner `
+    --define "sonar.host.url=http://host.docker.internal:9000" `
+    --define "sonar.projectKey=student-api-devops" `
+    --define "sonar.projectName=Student-API-DevOps" `
+    --define "sonar.projectVersion=$env:BUILD_NUMBER" `
+    --define "sonar.sources=src" `
+    --define "sonar.tests=tests" `
+    --define "sonar.test.inclusions=tests/**/*.js" `
+    --define "sonar.exclusions=**/node_modules/**" `
+    --define "sonar.login=$env:SONAR_TOKEN"
 '''
   }
 }
+
     stage('Quality Gate (Fail if Red)') {
       steps {
         timeout(time: 5, unit: 'MINUTES') {
