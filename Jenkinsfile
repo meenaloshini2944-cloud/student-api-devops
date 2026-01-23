@@ -56,16 +56,16 @@ pipeline {
       }
       steps {
         powershell '''
-          Write-Host "Running SonarScanner in Docker..."
-          docker run --rm `
+         $args = @(
+           "run","--rm"
             -e SONAR_HOST_URL=http://host.docker.internal:9000  `
             -e SONAR_TOKEN=$env:SONAR_TOKEN `
             -v "$env:WORKSPACE:/usr/src" `
             -w /usr/src `
             sonarsource/sonar-scanner-cli:latest `
-            sonar-scanner `
-              // "-Dsonar.projectKey=$env:SONAR_PROJECT_KEY" `
-              // "-Dsonar.projectName=$env:SONAR_PROJECT_NAME" `
+            
+              "-Dsonar.projectKey=Student-API-DevOps" `
+              "-Dsonar.projectName=Student-API-DevOps" `
               "-Dsonar.sources=src" `
               "-Dsonar.tests=tests" `
               "-Dsonar.test.inclusions=tests/**/*.js" `
