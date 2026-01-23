@@ -42,26 +42,23 @@ pipeline {
     SONAR_TOKEN = credentials('sonar-token')
   }
   steps {
-    powershell """
+    powershell '''
 docker run --rm `
   -e SONAR_HOST_URL="http://host.docker.internal:9000" `
   -e SONAR_TOKEN="$env:SONAR_TOKEN" `
-  -v "${env.WORKSPACE}:/work:ro" `
-  -w /work `
+  -v "$env:WORKSPACE:/usr/src" `
+  -w "/usr/src" `
   sonarsource/sonar-scanner-cli:latest `
-  sh -lc "mkdir -p /tmp/sonar /tmp/.scannerwork && sonar-scanner \
-    -Dsonar.host.url=http://host.docker.internal:9000 \
-    -Dsonar.projectKey=student-api-devops \
-    -Dsonar.projectName=Student-API-DevOps \
-    -Dsonar.projectVersion=${env.BUILD_NUMBER} \
-    -Dsonar.sources=. \
-    -Dsonar.exclusions=**/node_modules/** \
-    -Dsonar.userHome=/tmp/sonar \
-    -Dsonar.working.directory=/tmp/.scannerwork \
-    -Dsonar.login=$SONAR_TOKEN"
-"""
+  sonar-scanner `
+    -Dsonar.projectKey=Student-API-DevOps `
+    -Dsonar.projectName=Student-API-DevOps `
+    -Dsonar.sources=. `
+    -Dsonar.exclusions=**/node_modules/**,**/coverage/** `
+    -Dsonar.login=$env:SONAR_TOKEN
+'''
   }
 }
+
     stage('Quality Gate (Fail if Red)') {
       steps {
         timeout(time: 5, unit: 'MINUTES') {
