@@ -22,20 +22,28 @@ pipeline {
       steps { bat 'docker build -t student-api:%BUILD_NUMBER% .' }
     }
 
-    stage('Deploy (Staging)') {
-      steps {
-        bat '''
-          docker stop student-api-staging || exit /b 0
-          docker rm student-api-staging || exit /b 0
-          docker run -d --name student-api-staging -p 3000:3000 student-api:%BUILD_NUMBER%
-        '''
-      }
-    }
+   stage('Deploy (Staging)') {
+  steps {
+    powershell '''
+      docker stop student-api-staging 2>$null
+      docker rm student-api-staging 2>$null
 
-    stage('Monitoring (Health Check)') {
-      steps {
-        bat 'powershell -Command "Invoke-RestMethod http://localhost:3000/health"'
-      }
-    }
+      # Run on 3002 to avoid conflicts with anything else using 3000
+      docker run -d --name student-api-staging -p 3002:3000 student-api:$env:BUILD_NUMBER
+
+      docker ps
+    '''
+  }
+}
+
+stage('Monitoring (Health Check)') {
+  steps {
+    powershell '''
+      Start-Sleep -Seconds 3
+      Invoke-RestMethod http://localhost:3002/health
+    '''
+  }
+}
+
   }
 }
