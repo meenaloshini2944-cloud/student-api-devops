@@ -49,15 +49,15 @@ docker run --rm `
   -v "$env:WORKSPACE:/usr/src" `
   -w "/usr/src" `
   sonarsource/sonar-scanner-cli:latest `
-  sonar-scanner `
-    -Dsonar.projectKey=Student-API-DevOps `
-    -Dsonar.projectName=Student-API-DevOps `
-    -Dsonar.sources=. `
-    -Dsonar.exclusions=**/node_modules/**,**/coverage/** `
-    -Dsonar.login=$env:SONAR_TOKEN
+  -Dsonar.projectKey=Student-API-DevOps `
+  -Dsonar.projectName=Student-API-DevOps `
+  -Dsonar.sources=. `
+  -Dsonar.exclusions=**/node_modules/**,**/coverage/** `
+  -Dsonar.login=$env:SONAR_TOKEN
 '''
   }
 }
+
 
     stage('Quality Gate (Fail if Red)') {
       steps {
