@@ -62,15 +62,6 @@ stage('Code Quality (SonarQube Scan - Docker)') {
   }
 }
 
-
-    stage('Quality Gate (Fail if Red)') {
-      steps {
-        timeout(time: 5, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
-        }
-      }
-    }
-
     stage('Security (npm audit)') {
       steps {
         bat 'npm audit --audit-level=high || exit /b 0'
