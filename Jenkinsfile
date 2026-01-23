@@ -37,34 +37,28 @@ pipeline {
       }
     }
 
-    stage('Code Quality (SonarQube Scan)') {
+   stage('Code Quality (SonarQube Scan - Docker)') {
   environment {
     SONAR_TOKEN = credentials('sonar-token')
   }
   steps {
-    withSonarQubeEnv('SonarLocal') {
-      powershell '''
-        # Use workspace for sonar temp/cache (avoids AccessDenied under ProgramData/systemprofile)
-        $env:SONAR_USER_HOME = "$env:WORKSPACE\\.sonar"
-        New-Item -ItemType Directory -Force -Path $env:SONAR_USER_HOME | Out-Null
-
-        # Clean previous scanner artifacts
-        if (Test-Path "$env:WORKSPACE\\.scannerwork") { Remove-Item -Recurse -Force "$env:WORKSPACE\\.scannerwork" }
-
-        # Run scanner
-        npx sonar-scanner `
-          -D"sonar.projectKey=student-api-devops" `
-          -D"sonar.projectName=Student API DevOps" `
-          -D"sonar.sources=src" `
-          -D"sonar.tests=tests" `
-          -D"sonar.test.inclusions=tests/**/*.js" `
-          -D"sonar.host.url=$env:SONAR_HOST_URL" `
-          -D"sonar.login=$env:SONAR_TOKEN" `
-          -D"sonar.userHome=$env:SONAR_USER_HOME"
-      '''
-    }
+    powershell '''
+      docker run --rm `
+        -e SONAR_HOST_URL="http://host.docker.internal:9000" `
+        -e SONAR_TOKEN="$env:SONAR_TOKEN" `
+        -v "$env:WORKSPACE:/usr/src" `
+        -w "/usr/src" `
+        sonarsource/sonar-scanner-cli:latest `
+        -Dsonar.projectKey=student-api-devops `
+        -Dsonar.projectName="Student API DevOps" `
+        -Dsonar.sources=src `
+        -Dsonar.tests=tests `
+        -Dsonar.test.inclusions="tests/**/*.js" `
+        -Dsonar.login="$env:SONAR_TOKEN"
+    '''
   }
 }
+
 
 
     stage('Quality Gate (Fail if Red)') {
