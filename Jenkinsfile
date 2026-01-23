@@ -42,24 +42,27 @@ pipeline {
     SONAR_TOKEN = credentials('sonar-token')
   }
   steps {
-    powershell '''
+    powershell """
+Write-Host "Jenkins WORKSPACE: ${env.WORKSPACE}"
+
 docker run --rm `
   -e SONAR_HOST_URL="http://host.docker.internal:9000" `
   -e SONAR_TOKEN="$env:SONAR_TOKEN" `
-  -v "$env:WORKSPACE:/usr/src" `
-  -w /usr/src `
+  -v "${env.WORKSPACE}:/work" `
+  -w /work `
   sonarsource/sonar-scanner-cli:latest `
-  sonar-scanner `
-    --define "sonar.host.url=http://host.docker.internal:9000" `
-    --define "sonar.projectKey=student-api-devops" `
-    --define "sonar.projectName=Student-API-DevOps" `
-    --define "sonar.projectVersion=$env:BUILD_NUMBER" `
-    --define "sonar.sources=src" `
-    --define "sonar.exclusions=**/node_modules/**,**/*.test.js,**/*.spec.js" `
-    --define "sonar.login=$env:SONAR_TOKEN"
-'''
+  sh -lc "pwd && ls -la && ls -la src || true && sonar-scanner \
+    -Dsonar.host.url=http://host.docker.internal:9000 \
+    -Dsonar.projectKey=student-api-devops \
+    -Dsonar.projectName=Student-API-DevOps \
+    -Dsonar.projectVersion=${env.BUILD_NUMBER} \
+    -Dsonar.sources=. \
+    -Dsonar.exclusions=**/node_modules/** \
+    -Dsonar.login=$SONAR_TOKEN"
+"""
   }
 }
+
 
     stage('Quality Gate (Fail if Red)') {
       steps {
