@@ -60,8 +60,6 @@ pipeline {
           --define sonar.projectKey=Student-API-DevOps `
           --define sonar.projectName=Student-API-DevOps `
           --define sonar.sources=src `
-          --define sonar.tests=tests `
-          --define sonar.test.inclusions=tests/**/*.js `
           --define sonar.exclusions=**/node_modules/**,**/coverage/** `
           --define sonar.javascript.lcov.reportPaths=coverage/lcov.info
     '''
