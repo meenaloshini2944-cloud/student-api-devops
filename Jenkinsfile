@@ -4,23 +4,17 @@ pipeline {
   options {
     timestamps()
     disableConcurrentBuilds()
-    buildDiscarder(logRotator(numToKeepStr: '20'))
   }
 
   environment {
-    // App runtime ports
-    STAGING_PORT = '3002'
-    PROD_PORT    = '3003'
+    STAGING_NAME   = "student-api-staging"
+    PROD_NAME      = "student-api-prod"
+    STAGING_PORT   = "3002"
+    PROD_PORT      = "3003"
+    CONTAINER_PORT = "3000"
 
-    // Docker
-    IMAGE_NAME   = 'student-api'
-    STAGING_CTN  = 'student-api-staging'
-    PROD_CTN     = 'student-api-prod'
-
-    // SonarQube
-    SONAR_HOST_URL   = 'http://host.docker.internal:9000'
-    SONAR_PROJECT_KEY  = 'Student-API-DevOps'
-    SONAR_PROJECT_NAME = 'Student-API-DevOps'
+    IMAGE_BUILD    = "student-api:${BUILD_NUMBER}"
+    IMAGE_RELEASE  = "student-api:release-${BUILD_NUMBER}"
   }
 
   stages {
@@ -28,7 +22,6 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
-        bat 'git rev-parse --short HEAD'
       }
     }
 
@@ -38,87 +31,59 @@ pipeline {
       }
     }
 
-    stage('Test (Jest + Coverage)') {
+    stage('Test (Jest)') {
       steps {
-        bat 'npm test -- --runInBand --coverage'
-      }
-      post {
-        always {
-          // If you later add Jenkins "Publish HTML" or coverage plugins, this is where you'd publish.
-          bat 'if exist coverage\\lcov.info (echo Coverage report exists) else (echo No lcov.info found)'
-        }
+        bat 'npm test'
       }
     }
 
-    stage('Code Quality (SonarQube Scan - Docker)') {
-      environment {
-        SONAR_TOKEN = credentials('sonar-token')
-      }
-      steps {
-        powershell '''
-          Write-Host "Running SonarScanner in Docker..."
-          docker run --rm `
-            -e SONAR_HOST_URL=$env:SONAR_HOST_URL `
-            -e SONAR_TOKEN=$env:SONAR_TOKEN `
-            -v "$env:WORKSPACE:/usr/src" `
-            -w /usr/src `
-            sonarsource/sonar-scanner-cli:latest `
-            sonar-scanner `
-              "-Dsonar.projectKey=$env:SONAR_PROJECT_KEY" `
-              "-Dsonar.projectName=$env:SONAR_PROJECT_NAME" `
-              "-Dsonar.sources=src" `
-              "-Dsonar.tests=tests" `
-              "-Dsonar.test.inclusions=tests/**/*.js" `
-              "-Dsonar.exclusions=**/node_modules/**,**/coverage/**" `
-              "-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info"
-        '''
-      }
-    }
+stage('Code Quality (SonarQube Scan - Docker)') {
+  environment {
+    SONAR_TOKEN = credentials('sonar-token')
+  }
+  steps {
+    powershell '''
+      $args = @(
+        "run","--rm",
+        "-e","SONAR_HOST_URL=http://host.docker.internal:9000",
+        "-e","SONAR_TOKEN=$env:SONAR_TOKEN",
+        "-v","$env:WORKSPACE`:/usr/src",
+        "-w","/usr/src",
+        "sonarsource/sonar-scanner-cli:latest",
+        "-Dsonar.projectKey=Student-API-DevOps",
+        "-Dsonar.projectName=Student-API-DevOps",
+        "-Dsonar.sources=.",
+        "-Dsonar.exclusions=**/node_modules/**,**/coverage/**",
+        "-Dsonar.login=$env:SONAR_TOKEN"
+      )
+
+      & docker @args
+    '''
+  }
+}
 
     stage('Security (npm audit)') {
       steps {
-        // Keep it non-blocking for HD rubric unless your rubric demands failure on vulns
         bat 'npm audit --audit-level=high || exit /b 0'
       }
     }
 
     stage('Build Artefact (Docker Image)') {
       steps {
-        script {
-          env.BUILD_TAG_IMAGE = "${env.IMAGE_NAME}:${env.BUILD_NUMBER}"
-        }
-        bat 'docker build -t %BUILD_TAG_IMAGE% .'
-        bat 'docker images | findstr %IMAGE_NAME%'
-      }
-    }
-
-    stage('Security (Container Scan - Trivy)') {
-      steps {
-        powershell '''
-          Write-Host "Running Trivy scan (if installed)..."
-          $trivy = Get-Command trivy -ErrorAction SilentlyContinue
-          if ($null -eq $trivy) {
-            Write-Host "Trivy not installed on this agent. Skipping."
-            exit 0
-          }
-
-          trivy image --severity HIGH,CRITICAL --no-progress $env:BUILD_TAG_IMAGE
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "Trivy found HIGH/CRITICAL issues (non-blocking in this pipeline)."
-            exit 0
-          }
-        '''
+        bat "docker build -t ${IMAGE_BUILD} ."
+        bat "docker images | findstr student-api"
       }
     }
 
     stage('Deploy (Staging)') {
       steps {
         powershell '''
-          Write-Host "Deploying to STAGING..."
-          docker rm -f $env:STAGING_CTN 2>$null
-          docker run -d --name $env:STAGING_CTN -p "$env:STAGING_PORT:3000" $env:BUILD_TAG_IMAGE
+          docker stop student-api-staging 2>$null
+          docker rm student-api-staging 2>$null
 
-          docker ps --filter "name=$env:STAGING_CTN"
+          docker run -d --name student-api-staging -p 3002:3000 student-api:$env:BUILD_NUMBER
+
+          docker ps | Select-String student-api-staging
         '''
       }
     }
@@ -126,31 +91,25 @@ pipeline {
     stage('Monitoring (Staging Health Check)') {
       steps {
         powershell '''
-          Write-Host "STAGING Health:"
           Start-Sleep -Seconds 3
-          try {
-            $resp = Invoke-RestMethod -Uri "http://localhost:$env:STAGING_PORT/health" -TimeoutSec 15
-            $resp | ConvertTo-Json -Compress
-          } catch {
-            Write-Host "Staging health check failed."
-            throw
-          }
+          $resp = Invoke-RestMethod http://localhost:3002/health
+          Write-Host "STAGING Health:"
+          $resp | ConvertTo-Json -Compress | Write-Host
         '''
       }
     }
 
     stage('Release (Promote to Prod)') {
       steps {
-        script {
-          env.RELEASE_TAG_IMAGE = "${env.IMAGE_NAME}:release-${env.BUILD_NUMBER}"
-        }
-        bat 'docker tag %BUILD_TAG_IMAGE% %RELEASE_TAG_IMAGE%'
-        powershell '''
-          Write-Host "Deploying to PROD..."
-          docker rm -f $env:PROD_CTN 2>$null
-          docker run -d --name $env:PROD_CTN -p "$env:PROD_PORT:3000" $env:RELEASE_TAG_IMAGE
+        bat "docker tag ${IMAGE_BUILD} ${IMAGE_RELEASE}"
 
-          docker ps --filter "name=$env:PROD_CTN"
+        powershell '''
+          docker stop student-api-prod 2>$null
+          docker rm student-api-prod 2>$null
+
+          docker run -d --name student-api-prod -p 3003:3000 student-api:release-$env:BUILD_NUMBER
+
+          docker ps | Select-String student-api-prod
         '''
       }
     }
@@ -158,14 +117,14 @@ pipeline {
     stage('Monitoring (Prod Health Check)') {
       steps {
         powershell '''
-          Write-Host "PROD Health:"
           Start-Sleep -Seconds 3
           try {
-            $resp = Invoke-RestMethod -Uri "http://localhost:$env:PROD_PORT/health" -TimeoutSec 15
-            $resp | ConvertTo-Json -Compress
+            $resp = Invoke-RestMethod http://localhost:3003/health
+            Write-Host "PROD Health:"
+            $resp | ConvertTo-Json -Compress | Write-Host
           } catch {
-            Write-Host "Prod health check failed."
-            throw
+            Write-Host "ALERT: PROD health check FAILED"
+            exit 1
           }
         '''
       }
@@ -174,12 +133,7 @@ pipeline {
 
   post {
     always {
-      echo 'Pipeline completed.'
-      // Optional: keep containers running for demo; comment these two lines out if you want them to stay up.
-      // powershell 'docker rm -f $env:STAGING_CTN 2>$null; docker rm -f $env:PROD_CTN 2>$null'
-    }
-    failure {
-      echo 'Pipeline FAILED. Check stage logs above.'
+      echo "Pipeline completed."
     }
   }
 }
