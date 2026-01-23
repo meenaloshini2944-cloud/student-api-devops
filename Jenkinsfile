@@ -42,9 +42,9 @@ pipeline {
       }
     }
 
-    stage('Code Quality (SonarQube Scan - Docker)') {
-  environment {
-    SONAR_TOKEN = credentials('sonar-token')
+   stage('Code Quality (SonarQube Scan - Docker)') {
+      environment {
+      SONAR_TOKEN = credentials('sonar-token')
   }
   steps {
     powershell '''
@@ -65,7 +65,6 @@ pipeline {
     '''
   }
 }
-
 
     stage('Quality Gate (Enforced via Sonar API)') {
       environment {
