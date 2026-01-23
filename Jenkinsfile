@@ -48,8 +48,6 @@ pipeline {
   }
   steps {
     powershell '''
-      if (Test-Path ".scannerwork") { Remove-Item -Recurse -Force ".scannerwork" }
-
       docker run --rm `
         -e SONAR_HOST_URL="http://host.docker.internal:9000" `
         -e SONAR_TOKEN="$env:SONAR_TOKEN" `
@@ -57,15 +55,16 @@ pipeline {
         -w /usr/src `
         sonarsource/sonar-scanner-cli:latest `
         sonar-scanner `
-          --define sonar.projectKey=Student-API-DevOps `
-          --define sonar.projectName=Student-API-DevOps `
-          --define sonar.sources=. `
-          --define sonar.exclusions=**/node_modules/**,**/coverage/** `
-          --define sonar.javascript.lcov.reportPaths=coverage/lcov.info
+          -Dsonar.projectKey=Student-API-DevOps `
+          -Dsonar.projectName=Student-API-DevOps `
+          -Dsonar.sources=src `
+          -Dsonar.tests=tests `
+          -Dsonar.test.inclusions=tests/**/*.js `
+          -Dsonar.exclusions=**/node_modules/**,**/coverage/** `
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
     '''
   }
 }
-
 
 
     stage('Quality Gate (Enforced via Sonar API)') {
