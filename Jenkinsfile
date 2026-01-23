@@ -37,7 +37,7 @@ pipeline {
       }
     }
 
-   stage('Code Quality (SonarQube Scan - Docker)') {
+  stage('Code Quality (SonarQube Scan - Docker)') {
   environment {
     SONAR_TOKEN = credentials('sonar-token')
   }
@@ -55,9 +55,7 @@ docker run --rm `
     --define "sonar.projectName=Student-API-DevOps" `
     --define "sonar.projectVersion=$env:BUILD_NUMBER" `
     --define "sonar.sources=src" `
-    --define "sonar.tests=tests" `
-    --define "sonar.test.inclusions=tests/**/*.js" `
-    --define "sonar.exclusions=**/node_modules/**" `
+    --define "sonar.exclusions=**/node_modules/**,**/*.test.js,**/*.spec.js" `
     --define "sonar.login=$env:SONAR_TOKEN"
 '''
   }
