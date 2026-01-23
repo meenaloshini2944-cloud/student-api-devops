@@ -58,7 +58,7 @@ pipeline {
         powershell '''
           Write-Host "Running SonarScanner in Docker..."
           docker run --rm `
-            -e SONAR_HOST_URL=$env:SONAR_HOST_URL `
+            -e SONAR_HOST_URL=$env://host.docker.internal:9000  `
             -e SONAR_TOKEN=$env:SONAR_TOKEN `
             -v "$env:WORKSPACE:/usr/src" `
             -w /usr/src `
@@ -71,6 +71,7 @@ pipeline {
               "-Dsonar.test.inclusions=tests/**/*.js" `
               "-Dsonar.exclusions=**/node_modules/**,**/coverage/**" `
               "-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info"
+              "-Dsonar.token=$env:SONAR_TOKEN"
         '''
       }
     }
