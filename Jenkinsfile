@@ -2,10 +2,6 @@ pipeline {
   agent any
 
   stages {
-    stage('Checkout') {
-      steps { checkout scm }
-    }
-
     stage('Build (Dependencies)') {
       steps { bat 'npm ci' }
     }
@@ -39,11 +35,14 @@ pipeline {
 stage('Monitoring (Health Check)') {
   steps {
     powershell '''
-      Start-Sleep -Seconds 3
-      Invoke-RestMethod http://localhost:3002/health
+      Start-Sleep -Seconds 2
+      $resp = Invoke-RestMethod http://localhost:3002/health
+      Write-Host "Health Check Response:"
+      $resp | ConvertTo-Json -Compress | Write-Host
     '''
   }
 }
+
 
   }
 }
