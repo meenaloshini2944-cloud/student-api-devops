@@ -43,32 +43,31 @@ pipeline {
     }
 
     stage('Code Quality (SonarQube Scan - Docker)') {
-      environment {
-        SONAR_TOKEN = credentials('sonar-token')
-      }
-      steps {
-        powershell '''
-          # Ensure previous scanner outputs don't conflict
-          if (Test-Path ".scannerwork") { Remove-Item -Recurse -Force ".scannerwork" }
+  environment {
+    SONAR_TOKEN = credentials('sonar-token')
+  }
+  steps {
+    powershell '''
+      if (Test-Path ".scannerwork") { Remove-Item -Recurse -Force ".scannerwork" }
 
-          docker run --rm `
-            -e SONAR_HOST_URL="$env:SONAR_HOST_URL" `
-            -e SONAR_TOKEN="$env:SONAR_TOKEN" `
-            -v "$env:WORKSPACE:/usr/src" `
-            -w /usr/src `
-            sonarsource/sonar-scanner-cli:latest `
-            sonar-scanner `
-              -Dsonar.projectKey="$env:SONAR_PROJECT_KEY" `
-              -Dsonar.projectName="$env:SONAR_PROJECT_NAME" `
-              -Dsonar.sources="src" `
-              -Dsonar.tests="tests" `
-              -Dsonar.test.inclusions="tests/**/*.js" `
-              -Dsonar.exclusions="**/node_modules/**,**/coverage/**" `
-              -Dsonar.javascript.lcov.reportPaths="coverage/lcov.info" `
-              -Dsonar.working.directory=".scannerwork"
-        '''
-      }
-    }
+      docker run --rm `
+        -e SONAR_HOST_URL="http://host.docker.internal:9000" `
+        -e SONAR_TOKEN="$env:SONAR_TOKEN" `
+        -v "$env:WORKSPACE:/usr/src" `
+        -w /usr/src `
+        sonarsource/sonar-scanner-cli:latest `
+        sonar-scanner `
+          --define sonar.projectKey=Student-API-DevOps `
+          --define sonar.projectName=Student-API-DevOps `
+          --define sonar.sources=src `
+          --define sonar.tests=tests `
+          --define sonar.test.inclusions=tests/**/*.js `
+          --define sonar.exclusions=**/node_modules/**,**/coverage/** `
+          --define sonar.javascript.lcov.reportPaths=coverage/lcov.info
+    '''
+  }
+}
+
 
     stage('Quality Gate (Enforced via Sonar API)') {
       environment {
