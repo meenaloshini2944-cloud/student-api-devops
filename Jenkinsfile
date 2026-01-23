@@ -38,24 +38,34 @@ pipeline {
     }
 
     stage('Code Quality (SonarQube Scan)') {
-      environment {
-        SONAR_TOKEN = credentials('sonar-token')
-      }
-      steps {
-        withSonarQubeEnv('SonarLocal') {
-          powershell '''
-            npx sonar-scanner `
-              -D"sonar.projectKey=student-api-devops" `
-              -D"sonar.projectName=Student API DevOps" `
-              -D"sonar.sources=src" `
-              -D"sonar.tests=tests" `
-              -D"sonar.test.inclusions=tests/**/*.js" `
-              -D"sonar.host.url=$env:SONAR_HOST_URL" `
-              -D"sonar.login=$env:SONAR_TOKEN"
-          '''
-        }
-      }
+  environment {
+    SONAR_TOKEN = credentials('sonar-token')
+  }
+  steps {
+    withSonarQubeEnv('SonarLocal') {
+      powershell '''
+        # Use workspace for sonar temp/cache (avoids AccessDenied under ProgramData/systemprofile)
+        $env:SONAR_USER_HOME = "$env:WORKSPACE\\.sonar"
+        New-Item -ItemType Directory -Force -Path $env:SONAR_USER_HOME | Out-Null
+
+        # Clean previous scanner artifacts
+        if (Test-Path "$env:WORKSPACE\\.scannerwork") { Remove-Item -Recurse -Force "$env:WORKSPACE\\.scannerwork" }
+
+        # Run scanner
+        npx sonar-scanner `
+          -D"sonar.projectKey=student-api-devops" `
+          -D"sonar.projectName=Student API DevOps" `
+          -D"sonar.sources=src" `
+          -D"sonar.tests=tests" `
+          -D"sonar.test.inclusions=tests/**/*.js" `
+          -D"sonar.host.url=$env:SONAR_HOST_URL" `
+          -D"sonar.login=$env:SONAR_TOKEN" `
+          -D"sonar.userHome=$env:SONAR_USER_HOME"
+      '''
     }
+  }
+}
+
 
     stage('Quality Gate (Fail if Red)') {
       steps {
