@@ -59,12 +59,13 @@ pipeline {
         sonar-scanner `
           --define sonar.projectKey=Student-API-DevOps `
           --define sonar.projectName=Student-API-DevOps `
-          --define sonar.sources=src `
+          --define sonar.sources=. `
           --define sonar.exclusions=**/node_modules/**,**/coverage/** `
           --define sonar.javascript.lcov.reportPaths=coverage/lcov.info
     '''
   }
 }
+
 
 
     stage('Quality Gate (Enforced via Sonar API)') {
