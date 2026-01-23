@@ -48,6 +48,8 @@ pipeline {
   }
   steps {
     powershell '''
+        Write-Host "==== DEBUG: Jenkinsfile Sonar command ===="
+        $cmd = @"
       docker run --rm `
         -e SONAR_HOST_URL="http://host.docker.internal:9000" `
         -e SONAR_TOKEN="$env:SONAR_TOKEN" `
