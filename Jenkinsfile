@@ -44,15 +44,19 @@ pipeline {
       steps {
         withSonarQubeEnv('SonarLocal') {
           powershell '''
-            npx sonar-scanner `
-              -D"sonar.projectKey=student-api-devops" `
-              -D"sonar.projectName=Student API DevOps" `
-              -D"sonar.sources=src" `
-              -D"sonar.tests=tests" `
-              -D"sonar.test.inclusions=tests/**/*.js" `
-              -D"sonar.host.url=$env:SONAR_HOST_URL" `
-              -D"sonar.login=$env:SONAR_TOKEN"
-          '''
+        docker run --rm `
+          -e SONAR_HOST_URL=http://host.docker.internal:9000 `
+          -e SONAR_TOKEN="$env:SONAR_TOKEN" `
+          -v "$env:WORKSPACE:/usr/src" `
+          -w "/usr/src" `
+          sonarsource/sonar-scanner-cli:latest `
+          -Dsonar.projectKey=student-api-devops `
+          -Dsonar.projectName=Student-API-DevOps `
+          -Dsonar.sources=src `
+          -Dsonar.tests=tests `
+          -Dsonar.test.inclusions=tests/**/*.js `
+          -Dsonar.login="$env:SONAR_TOKEN"
+        '''
         }
       }
     }
