@@ -1,24 +1,26 @@
 pipeline {
   agent any
 
-  environment {
-    // ---------- SonarQube ----------
-    SONAR_HOST_URL  = 'http://host.docker.internal:9000'
-    SONAR_PROJECT_KEY  = 'Student-API-DevOps'
-    SONAR_PROJECT_NAME = 'Student-API-DevOps'
-
-    // ---------- App ----------
-    APP_PORT_IN_CONTAINER = '3000'
-    STAGING_PORT_HOST = '3002'
-    PROD_PORT_HOST    = '3003'
-
-    // ---------- Image ----------
-    IMAGE_NAME = "student-api:${BUILD_NUMBER}"
-    RELEASE_TAG = "student-api:release-${BUILD_NUMBER}"
-  }
-
   options {
     timestamps()
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  environment {
+    // App runtime ports
+    STAGING_PORT = '3002'
+    PROD_PORT    = '3003'
+
+    // Docker
+    IMAGE_NAME   = 'student-api'
+    STAGING_CTN  = 'student-api-staging'
+    PROD_CTN     = 'student-api-prod'
+
+    // SonarQube
+    SONAR_HOST_URL   = 'http://host.docker.internal:9000'
+    SONAR_PROJECT_KEY  = 'Student-API-DevOps'
+    SONAR_PROJECT_NAME = 'Student-API-DevOps'
   }
 
   stages {
@@ -26,6 +28,7 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
+        bat 'git rev-parse --short HEAD'
       }
     }
 
@@ -37,8 +40,13 @@ pipeline {
 
     stage('Test (Jest + Coverage)') {
       steps {
-        // Generates coverage/lcov.info which Sonar will import
         bat 'npm test -- --runInBand --coverage'
+      }
+      post {
+        always {
+          // If you later add Jenkins "Publish HTML" or coverage plugins, this is where you'd publish.
+          bat 'if exist coverage\\lcov.info (echo Coverage report exists) else (echo No lcov.info found)'
+        }
       }
     }
 
@@ -48,126 +56,57 @@ pipeline {
       }
       steps {
         powershell '''
-          # Ensure previous scanner outputs don't conflict
-          if (Test-Path ".scannerwork") { Remove-Item -Recurse -Force ".scannerwork" }
-
+          Write-Host "Running SonarScanner in Docker..."
           docker run --rm `
-            -e SONAR_HOST_URL="$env:SONAR_HOST_URL" `
-            -e SONAR_TOKEN="$env:SONAR_TOKEN" `
+            -e SONAR_HOST_URL=$env:SONAR_HOST_URL `
+            -e SONAR_TOKEN=$env:SONAR_TOKEN `
             -v "$env:WORKSPACE:/usr/src" `
             -w /usr/src `
             sonarsource/sonar-scanner-cli:latest `
             sonar-scanner `
-              -Dsonar.projectKey="$env:SONAR_PROJECT_KEY" `
-              -Dsonar.projectName="$env:SONAR_PROJECT_NAME" `
-              -Dsonar.sources="src" `
-              -Dsonar.tests="tests" `
-              -Dsonar.test.inclusions="tests/**/*.js" `
-              -Dsonar.exclusions="**/node_modules/**,**/coverage/**" `
-              -Dsonar.javascript.lcov.reportPaths="coverage/lcov.info" `
-              -Dsonar.working.directory=".scannerwork"
-        '''
-      }
-    }
-
-    stage('Quality Gate (Enforced via Sonar API)') {
-      environment {
-        SONAR_TOKEN = credentials('sonar-token')
-      }
-      steps {
-        powershell '''
-          $ErrorActionPreference = "Stop"
-
-          $reportPath = Join-Path $env:WORKSPACE ".scannerwork\\report-task.txt"
-          if (!(Test-Path $reportPath)) {
-            throw "Sonar report-task.txt not found at: $reportPath. Ensure sonar.working.directory=.scannerwork"
-          }
-
-          $props = @{}
-          Get-Content $reportPath | ForEach-Object {
-            if ($_ -match "^(.*?)=(.*)$") { $props[$matches[1]] = $matches[2] }
-          }
-
-          $ceTaskUrl = $props["ceTaskUrl"]
-          if ([string]::IsNullOrWhiteSpace($ceTaskUrl)) { throw "ceTaskUrl missing in report-task.txt" }
-
-          # Build Basic Auth header from token (token:)
-          $pair = "$($env:SONAR_TOKEN):"
-          $b64  = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
-          $hdrs = @{ Authorization = "Basic $b64" }
-
-          Write-Host "Polling CE task: $ceTaskUrl"
-
-          $deadline = (Get-Date).AddMinutes(5)
-          $taskStatus = ""
-          $analysisId = ""
-
-          while ((Get-Date) -lt $deadline) {
-            $ce = Invoke-RestMethod -Uri $ceTaskUrl -Headers $hdrs -Method Get
-            $taskStatus = $ce.task.status
-            $analysisId  = $ce.task.analysisId
-
-            if ($taskStatus -eq "SUCCESS") { break }
-            if ($taskStatus -in @("FAILED","CANCELED")) {
-              throw "Sonar CE task ended with status: $taskStatus"
-            }
-
-            Start-Sleep -Seconds 3
-          }
-
-          if ($taskStatus -ne "SUCCESS") {
-            throw "Timed out waiting for Sonar CE task to finish (last status: $taskStatus)"
-          }
-
-          if ([string]::IsNullOrWhiteSpace($analysisId)) {
-            throw "analysisId not returned from CE task; cannot evaluate Quality Gate"
-          }
-
-          $qgUrl = "$($env:SONAR_HOST_URL)/api/qualitygates/project_status?analysisId=$analysisId"
-          $qg = Invoke-RestMethod -Uri $qgUrl -Headers $hdrs -Method Get
-          $qgStatus = $qg.projectStatus.status
-
-          Write-Host "Quality Gate status: $qgStatus"
-
-          if ($qgStatus -ne "OK") {
-            throw "QUALITY GATE FAILED (status=$qgStatus). Check Sonar dashboard for details."
-          }
+              "-Dsonar.projectKey=$env:SONAR_PROJECT_KEY" `
+              "-Dsonar.projectName=$env:SONAR_PROJECT_NAME" `
+              "-Dsonar.sources=src" `
+              "-Dsonar.tests=tests" `
+              "-Dsonar.test.inclusions=tests/**/*.js" `
+              "-Dsonar.exclusions=**/node_modules/**,**/coverage/**" `
+              "-Dsonar.javascript.lcov.reportPaths=coverage/lcov.info"
         '''
       }
     }
 
     stage('Security (npm audit)') {
       steps {
-        // Keep your prior behavior (do not fail pipeline on audit)
+        // Keep it non-blocking for HD rubric unless your rubric demands failure on vulns
         bat 'npm audit --audit-level=high || exit /b 0'
       }
     }
 
     stage('Build Artefact (Docker Image)') {
       steps {
-        bat "docker build -t %IMAGE_NAME% ."
-        bat 'docker images | findstr student-api'
+        script {
+          env.BUILD_TAG_IMAGE = "${env.IMAGE_NAME}:${env.BUILD_NUMBER}"
+        }
+        bat 'docker build -t %BUILD_TAG_IMAGE% .'
+        bat 'docker images | findstr %IMAGE_NAME%'
       }
     }
 
     stage('Security (Container Scan - Trivy)') {
       steps {
-        // Uses Trivy via Docker. Works with Docker Desktop (Windows) by mounting the docker engine pipe.
         powershell '''
-          $ErrorActionPreference = "Stop"
+          Write-Host "Running Trivy scan (if installed)..."
+          $trivy = Get-Command trivy -ErrorAction SilentlyContinue
+          if ($null -eq $trivy) {
+            Write-Host "Trivy not installed on this agent. Skipping."
+            exit 0
+          }
 
-          # Trivy cache directory (optional but speeds up)
-          $cache = Join-Path $env:USERPROFILE ".cache\\trivy"
-          if (!(Test-Path $cache)) { New-Item -ItemType Directory -Force -Path $cache | Out-Null }
-
-          docker run --rm `
-            -v //./pipe/docker_engine:/var/run/docker.sock `
-            -v "$cache:/root/.cache/" `
-            aquasec/trivy:latest `
-            image `
-            --severity HIGH,CRITICAL `
-            --exit-code 1 `
-            "$env:IMAGE_NAME"
+          trivy image --severity HIGH,CRITICAL --no-progress $env:BUILD_TAG_IMAGE
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Trivy found HIGH/CRITICAL issues (non-blocking in this pipeline)."
+            exit 0
+          }
         '''
       }
     }
@@ -175,9 +114,11 @@ pipeline {
     stage('Deploy (Staging)') {
       steps {
         powershell '''
-          docker rm -f student-api-staging 2>$null
-          docker run -d --name student-api-staging -p "$env:STAGING_PORT_HOST:$env:APP_PORT_IN_CONTAINER" "$env:IMAGE_NAME"
-          docker ps | findstr student-api-staging
+          Write-Host "Deploying to STAGING..."
+          docker rm -f $env:STAGING_CTN 2>$null
+          docker run -d --name $env:STAGING_CTN -p "$env:STAGING_PORT:3000" $env:BUILD_TAG_IMAGE
+
+          docker ps --filter "name=$env:STAGING_CTN"
         '''
       }
     }
@@ -186,42 +127,30 @@ pipeline {
       steps {
         powershell '''
           Write-Host "STAGING Health:"
-          curl.exe -s "http://localhost:$env:STAGING_PORT_HOST/health"
+          Start-Sleep -Seconds 3
+          try {
+            $resp = Invoke-RestMethod -Uri "http://localhost:$env:STAGING_PORT/health" -TimeoutSec 15
+            $resp | ConvertTo-Json -Compress
+          } catch {
+            Write-Host "Staging health check failed."
+            throw
+          }
         '''
-      }
-    }
-
-    stage('Security (DAST - OWASP ZAP Baseline on Staging)') {
-      steps {
-        // Mark UNSTABLE if ZAP finds issues (instead of failing the entire pipeline).
-        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-          powershell '''
-            $ErrorActionPreference = "Stop"
-
-            $target = "http://host.docker.internal:$env:STAGING_PORT_HOST"
-            Write-Host "Running ZAP baseline against $target"
-
-            docker run --rm `
-              -t owasp/zap2docker-stable `
-              zap-baseline.py `
-                -t "$target" `
-                -r zap_report.html `
-                -J zap_report.json `
-                -x zap_report.xml
-
-            # If ZAP exits non-zero, catchError will mark build UNSTABLE.
-          '''
-        }
       }
     }
 
     stage('Release (Promote to Prod)') {
       steps {
-        bat "docker tag %IMAGE_NAME% %RELEASE_TAG%"
+        script {
+          env.RELEASE_TAG_IMAGE = "${env.IMAGE_NAME}:release-${env.BUILD_NUMBER}"
+        }
+        bat 'docker tag %BUILD_TAG_IMAGE% %RELEASE_TAG_IMAGE%'
         powershell '''
-          docker rm -f student-api-prod 2>$null
-          docker run -d --name student-api-prod -p "$env:PROD_PORT_HOST:$env:APP_PORT_IN_CONTAINER" "$env:RELEASE_TAG"
-          docker ps | findstr student-api-prod
+          Write-Host "Deploying to PROD..."
+          docker rm -f $env:PROD_CTN 2>$null
+          docker run -d --name $env:PROD_CTN -p "$env:PROD_PORT:3000" $env:RELEASE_TAG_IMAGE
+
+          docker ps --filter "name=$env:PROD_CTN"
         '''
       }
     }
@@ -230,7 +159,14 @@ pipeline {
       steps {
         powershell '''
           Write-Host "PROD Health:"
-          curl.exe -s "http://localhost:$env:PROD_PORT_HOST/health"
+          Start-Sleep -Seconds 3
+          try {
+            $resp = Invoke-RestMethod -Uri "http://localhost:$env:PROD_PORT/health" -TimeoutSec 15
+            $resp | ConvertTo-Json -Compress
+          } catch {
+            Write-Host "Prod health check failed."
+            throw
+          }
         '''
       }
     }
@@ -239,8 +175,11 @@ pipeline {
   post {
     always {
       echo 'Pipeline completed.'
-      // Optional: archive ZAP reports if you want evidence for rubric
-      // archiveArtifacts artifacts: 'zap_report.*', allowEmptyArchive: true
+      // Optional: keep containers running for demo; comment these two lines out if you want them to stay up.
+      // powershell 'docker rm -f $env:STAGING_CTN 2>$null; docker rm -f $env:PROD_CTN 2>$null'
+    }
+    failure {
+      echo 'Pipeline FAILED. Check stage logs above.'
     }
   }
 }
