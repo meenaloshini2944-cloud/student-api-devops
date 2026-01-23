@@ -49,7 +49,7 @@ docker run --rm `
   -v "${env.WORKSPACE}:/work:ro" `
   -w /work `
   sonarsource/sonar-scanner-cli:latest `
-  bat -lc "mkdir -p /tmp/sonar /tmp/.scannerwork && sonar-scanner \
+  sh -lc "mkdir -p /tmp/sonar /tmp/.scannerwork && sonar-scanner \
     -Dsonar.host.url=http://host.docker.internal:9000 \
     -Dsonar.projectKey=student-api-devops \
     -Dsonar.projectName=Student-API-DevOps \
