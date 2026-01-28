@@ -1,16 +1,17 @@
 const express = require("express");
-
-app.use(express.json());
 const cors = require("cors");
 require("dotenv").config();
 
 const studentRoutes = require("./routes/students.routes");
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
+// Health endpoint for Jenkins + tests
 app.get("/health", (req, res) => res.status(200).json({ status: "UP" }));
+
 app.use("/students", studentRoutes);
 
 module.exports = app;
