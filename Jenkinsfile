@@ -91,17 +91,36 @@ pipeline {
       }
     }
 
-    stage('4) Code Quality (SonarQube)') {
-      steps {
-        script {
-          if (isUnix()) {
-            sh 'echo "Run SonarQube scan here (configure in Jenkins)."'
-          } else {
-            bat 'echo Run SonarQube scan here (configure in Jenkins).'
-          }
-        }
+    stage('4) Code Quality & SAST (SonarQube + Semgrep)') {
+  steps {
+    script {
+
+      // ---------- SonarQube ----------
+      withSonarQubeEnv('SonarQube') {
+        bat """
+        sonar-scanner ^
+          -Dsonar.projectKey=student-api ^
+          -Dsonar.projectName=student-api ^
+          -Dsonar.sources=src ^
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+        """
       }
+
+      // Optional: Wait for Quality Gate (HD feature)
+      timeout(time: 5, unit: 'MINUTES') {
+        waitForQualityGate abortPipeline: true
+      }
+
+      // ---------- Semgrep (SAST) ----------
+      echo "Running Semgrep SAST scan..."
+      bat """
+      docker run --rm -v "%CD%:/src" returntocorp/semgrep semgrep scan --config=auto --severity ERROR
+      """
+
     }
+  }
+}
+
 
     stage('5) Security (Dependency Audit)') {
       steps {
