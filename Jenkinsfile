@@ -122,17 +122,79 @@ pipeline {
 }
 
 
-    stage('5) Security (Dependency Audit)') {
-      steps {
-        script {
-          if (isUnix()) {
-            sh 'npm audit --audit-level=high || true'
-          } else {
-            bat 'npm audit --audit-level=high || exit /b 0'
-          }
-        }
-      }
+    stage('5) Supply Chain Security (SBOM + Dependency-Check + Grype)') {
+  steps {
+    script {
+      // ---------- 5.1 Generate CycloneDX SBOM ----------
+      // Requires: npm package "cyclonedx-npm" (dev dependency) OR use npx
+      bat '''
+        echo [Stage 5.1] Generating CycloneDX SBOM...
+        if not exist reports mkdir reports
+        if not exist reports\\sbom mkdir reports\\sbom
+
+        REM Use npx so you don't need global install
+        npx --yes @cyclonedx/cyclonedx-npm --output-file reports\\sbom\\sbom.json --output-format json
+        if not exist reports\\sbom\\sbom.json (
+          echo ERROR: SBOM not generated.
+          exit /b 1
+        )
+      '''
+
+      // ---------- 5.2 OWASP Dependency-Check ----------
+      // Uses Docker image so you don't need Java/Dependency-Check installed on Jenkins
+      // Output: reports/dependency-check (HTML + XML + JSON)
+      bat '''
+        echo [Stage 5.2] Running OWASP Dependency-Check...
+        if not exist reports\\dependency-check mkdir reports\\dependency-check
+
+        docker run --rm ^
+          -v "%CD%:/src" ^
+          owasp/dependency-check:latest ^
+          --scan /src ^
+          --format "ALL" ^
+          --out /src/reports/dependency-check ^
+          --suppression /src/dependency-check-suppressions.xml ^
+          --nvdApiKey "" ^
+          --failOnCVSS 7
+
+        REM Dependency-Check returns non-zero if CVSS threshold hit. That’s intended.
+      '''
+
+      // ---------- 5.3 Grype scan on SBOM ----------
+      // Scans the SBOM you generated (sbom.json)
+      // Uses config policy from your repo: .grype.yaml
+      bat '''
+        echo [Stage 5.3] Running Grype scan against SBOM...
+        docker run --rm ^
+          -v "%CD%:/src" ^
+          anchore/grype:latest ^
+          sbom:/src/reports/sbom/sbom.json ^
+          -c /src/.grype.yaml ^
+          -o table
+
+        REM Grype will exit non-zero if policy says fail-on high/critical (from .grype.yaml)
+      '''
     }
+  }
+
+  post {
+    always {
+      // Archive artifacts so you can attach screenshots / evidence in report
+      archiveArtifacts artifacts: 'reports/**', fingerprint: true
+
+      // If you have HTML Publisher installed, keep these (nice for HD):
+      publishHTML(target: [
+        reportName: 'Dependency-Check Report',
+        reportDir: 'reports/dependency-check',
+        reportFiles: 'dependency-check-report.html',
+        keepAll: true,
+        alwaysLinkToLastBuild: true,
+        allowMissing: true
+      ])
+    }
+  }
+}
+
 
     stage('6) Build Artefact (Docker Image)') {
       steps {
