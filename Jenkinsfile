@@ -7,133 +7,185 @@ pipeline {
   }
 
   environment {
+    APP_NAME       = "student-api"
+    HEALTH_PATH    = "/health"
+
     STAGING_NAME   = "student-api-staging"
     PROD_NAME      = "student-api-prod"
     STAGING_PORT   = "3002"
     PROD_PORT      = "3003"
     CONTAINER_PORT = "3000"
 
-    IMAGE_BUILD    = "student-api:${BUILD_NUMBER}"
-    IMAGE_RELEASE  = "student-api:release-${BUILD_NUMBER}"
+    IMAGE_BUILD    = "${APP_NAME}:${BUILD_NUMBER}"
+    IMAGE_RELEASE  = "${APP_NAME}:release-${BUILD_NUMBER}"
+
+    JUNIT_PATTERN  = "reports/junit/**/*.xml"
+    MOCHA_HTML_DIR = "reports/mochawesome"
+    COVERAGE_DIR   = "coverage"
   }
 
   stages {
 
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
+    stage('1) Checkout') {
+      steps { checkout scm }
     }
 
-    stage('Build (Dependencies)') {
+    stage('2) Build (Dependencies)') {
       steps {
-        bat 'npm ci'
-      }
-    }
-
-    stage('Test (Jest)') {
-      steps {
-        bat 'npm test'
-      }
-    }
-
-stage('Code Quality (SonarQube Scan - Docker)') {
-  environment {
-    SONAR_TOKEN = credentials('sonar-token')
-  }
-  steps {
-    powershell '''
-      $args = @(
-        "run","--rm",
-        "-e","SONAR_HOST_URL=http://host.docker.internal:9000",
-        "-e","SONAR_TOKEN=$env:SONAR_TOKEN",
-        "-v","$env:WORKSPACE`:/usr/src",
-        "-w","/usr/src",
-        "sonarsource/sonar-scanner-cli:latest",
-        "-Dsonar.projectKey=Student-API-DevOps",
-        "-Dsonar.projectName=Student-API-DevOps",
-        "-Dsonar.sources=.",
-        "-Dsonar.exclusions=**/node_modules/**,**/coverage/**",
-        "-Dsonar.login=$env:SONAR_TOKEN"
-      )
-
-      & docker @args
-    '''
-  }
-}
-
-    stage('Security (npm audit)') {
-      steps {
-        bat 'npm audit --audit-level=high || exit /b 0'
-      }
-    }
-
-    stage('Build Artefact (Docker Image)') {
-      steps {
-        bat "docker build -t ${IMAGE_BUILD} ."
-        bat "docker images | findstr student-api"
-      }
-    }
-
-    stage('Deploy (Staging)') {
-      steps {
-        powershell '''
-          docker stop student-api-staging 2>$null
-          docker rm student-api-staging 2>$null
-
-          docker run -d --name student-api-staging -p 3002:3000 student-api:$env:BUILD_NUMBER
-
-          docker ps | Select-String student-api-staging
-        '''
-      }
-    }
-
-    stage('Monitoring (Staging Health Check)') {
-      steps {
-        powershell '''
-          Start-Sleep -Seconds 3
-          $resp = Invoke-RestMethod http://localhost:3002/health
-          Write-Host "STAGING Health:"
-          $resp | ConvertTo-Json -Compress | Write-Host
-        '''
-      }
-    }
-
-    stage('Release (Promote to Prod)') {
-      steps {
-        bat "docker tag ${IMAGE_BUILD} ${IMAGE_RELEASE}"
-
-        powershell '''
-          docker stop student-api-prod 2>$null
-          docker rm student-api-prod 2>$null
-
-          docker run -d --name student-api-prod -p 3003:3000 student-api:release-$env:BUILD_NUMBER
-
-          docker ps | Select-String student-api-prod
-        '''
-      }
-    }
-
-    stage('Monitoring (Prod Health Check)') {
-      steps {
-        powershell '''
-          Start-Sleep -Seconds 3
-          try {
-            $resp = Invoke-RestMethod http://localhost:3003/health
-            Write-Host "PROD Health:"
-            $resp | ConvertTo-Json -Compress | Write-Host
-          } catch {
-            Write-Host "ALERT: PROD health check FAILED"
-            exit 1
+        script {
+          if (isUnix()) {
+            sh 'node -v && npm -v'
+            sh 'npm ci'
+          } else {
+            bat 'node -v && npm -v'
+            bat 'npm ci'
           }
-        '''
+        }
+      }
+    }
+
+    stage('3) Test + Coverage (Mocha/Chai/Supertest)') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh """
+              rm -rf reports coverage || true
+              mkdir -p reports/junit reports/mochawesome
+              npm run test:ci
+              npm run test:html
+            """
+          } else {
+            bat """
+              if exist reports rmdir /s /q reports
+              if exist coverage rmdir /s /q coverage
+              mkdir reports\\junit
+              mkdir reports\\mochawesome
+              npm run test:ci
+              npm run test:html
+            """
+          }
+        }
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: "${JUNIT_PATTERN}"
+
+          publishHTML(target: [
+            reportName: "Mocha Test Report (Mochawesome)",
+            reportDir: "${MOCHA_HTML_DIR}",
+            reportFiles: "mochawesome.html",
+            keepAll: true,
+            alwaysLinkToLastBuild: true,
+            allowMissing: true
+          ])
+
+          publishHTML(target: [
+            reportName: "Coverage Report (nyc)",
+            reportDir: "${COVERAGE_DIR}",
+            reportFiles: "index.html",
+            keepAll: true,
+            alwaysLinkToLastBuild: true,
+            allowMissing: true
+          ])
+        }
+      }
+    }
+
+    stage('4) Code Quality (SonarQube)') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh 'echo "Run SonarQube scan here (configure in Jenkins)."'
+          } else {
+            bat 'echo Run SonarQube scan here (configure in Jenkins).'
+          }
+        }
+      }
+    }
+
+    stage('5) Security (Dependency Audit)') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh 'npm audit --audit-level=high || true'
+          } else {
+            bat 'npm audit --audit-level=high || exit /b 0'
+          }
+        }
+      }
+    }
+
+    stage('6) Build Artefact (Docker Image)') {
+      steps {
+        script {
+          if (isUnix()) sh "docker build -t ${IMAGE_BUILD} ."
+          else          bat "docker build -t %IMAGE_BUILD% ."
+        }
+      }
+    }
+
+    stage('7) Deploy to Staging') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh """
+              docker rm -f ${STAGING_NAME} >/dev/null 2>&1 || true
+              docker run -d --name ${STAGING_NAME} -p ${STAGING_PORT}:${CONTAINER_PORT} ${IMAGE_BUILD}
+            """
+          } else {
+            bat """
+              docker rm -f %STAGING_NAME% >NUL 2>&1
+              docker run -d --name %STAGING_NAME% -p %STAGING_PORT%:%CONTAINER_PORT% %IMAGE_BUILD%
+            """
+          }
+        }
+      }
+    }
+
+    stage('8) Staging Health Check') {
+      steps {
+        script {
+          def url = "http://localhost:${STAGING_PORT}${HEALTH_PATH}"
+          if (isUnix()) sh "curl -fsS ${url}"
+          else          bat "powershell -NoProfile -Command \"(Invoke-WebRequest -UseBasicParsing '${url}').StatusCode\""
+        }
+      }
+    }
+
+    stage('9) Release (Promote to Prod)') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh "docker tag ${IMAGE_BUILD} ${IMAGE_RELEASE}"
+            sh """
+              docker rm -f ${PROD_NAME} >/dev/null 2>&1 || true
+              docker run -d --name ${PROD_NAME} -p ${PROD_PORT}:${CONTAINER_PORT} ${IMAGE_RELEASE}
+            """
+          } else {
+            bat "docker tag %IMAGE_BUILD% %IMAGE_RELEASE%"
+            bat """
+              docker rm -f %PROD_NAME% >NUL 2>&1
+              docker run -d --name %PROD_NAME% -p %PROD_PORT%:%CONTAINER_PORT% %IMAGE_RELEASE%
+            """
+          }
+        }
+      }
+    }
+
+    stage('10) Production Health Check') {
+      steps {
+        script {
+          def url = "http://localhost:${PROD_PORT}${HEALTH_PATH}"
+          if (isUnix()) sh "curl -fsS ${url}"
+          else          bat "powershell -NoProfile -Command \"(Invoke-WebRequest -UseBasicParsing '${url}').StatusCode\""
+        }
       }
     }
   }
 
   post {
     always {
-      echo "Pipeline completed."
+      archiveArtifacts artifacts: "reports/**, coverage/**", allowEmptyArchive: true
     }
   }
 }

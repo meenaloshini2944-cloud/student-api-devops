@@ -4,21 +4,23 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-  "start": "node src/server.js",
-  "test": "jest --runInBand"
-}
+    "start": "node src/server.js",
 
-,
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+    "test": "npm run test:ci",
+    "test:ci": "nyc --reporter=text --reporter=lcov --reporter=html --check-coverage --lines=80 --functions=80 --branches=70 --statements=80 mocha \"tests/**/*.test.js\" --timeout 15000 --reporter mocha-junit-reporter --reporter-options mochaFile=reports/junit/mocha-junit.xml",
+    "test:html": "mocha \"tests/**/*.test.js\" --timeout 15000 --reporter mochawesome --reporter-options reportDir=reports/mochawesome,reportFilename=mochawesome,html=true,json=true,quiet=true"
+  },
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1"
   },
   "devDependencies": {
-    "jest": "^30.2.0",
-    "supertest": "^7.2.2"
+    "mocha": "^10.0.0",
+    "chai": "^4.3.0",
+    "supertest": "^7.2.2",
+    "nyc": "^15.1.0",
+    "mocha-junit-reporter": "^2.2.0",
+    "mochawesome": "^7.1.3"
   }
 }

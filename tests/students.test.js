@@ -1,4 +1,5 @@
 const request = require("supertest");
+const { expect } = require("chai");
 const fs = require("fs");
 const path = require("path");
 
@@ -10,51 +11,51 @@ function resetData() {
   fs.writeFileSync(dataPath, JSON.stringify([], null, 2));
 }
 
-describe("Student API", () => {
-  beforeEach(() => {
+describe("Student API", function () {
+  beforeEach(function () {
     resetData();
   });
 
-  test("GET /health should return status UP", async () => {
+  it("GET /health should return status UP", async function () {
     const res = await request(app).get("/health");
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ status: "UP" });
+    expect(res.status).to.equal(200);
+    expect(res.body).to.deep.equal({ status: "UP" });
   });
 
-  test("GET /students should return empty array initially", async () => {
+  it("GET /students should return empty array initially", async function () {
     const res = await request(app).get("/students");
-    expect(res.statusCode).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(0);
+    expect(res.status).to.equal(200);
+    expect(res.body).to.be.an("array");
+    expect(res.body.length).to.equal(0);
   });
 
-  test("POST /students should create a student", async () => {
+  it("POST /students should create a student", async function () {
     const payload = { name: "Meena", email: "meena@example.com", course: "Cyber Security" };
 
     const res = await request(app).post("/students").send(payload);
-    expect(res.statusCode).toBe(201);
-    expect(res.body).toHaveProperty("id");
-    expect(res.body.name).toBe(payload.name);
-    expect(res.body.email).toBe(payload.email);
-    expect(res.body.course).toBe(payload.course);
+    expect(res.status).to.equal(201);
+    expect(res.body).to.have.property("id");
+    expect(res.body.name).to.equal(payload.name);
+    expect(res.body.email).to.equal(payload.email);
+    expect(res.body.course).to.equal(payload.course);
 
     const list = await request(app).get("/students");
-    expect(list.statusCode).toBe(200);
-    expect(list.body.length).toBe(1);
+    expect(list.status).to.equal(200);
+    expect(list.body.length).to.equal(1);
   });
 
-  test("POST /students should fail if required fields missing", async () => {
+  it("POST /students should fail if required fields missing", async function () {
     const res = await request(app).post("/students").send({ name: "OnlyName" });
-    expect(res.statusCode).toBe(400);
-    expect(res.body).toHaveProperty("message");
+    expect(res.status).to.equal(400);
+    expect(res.body).to.have.property("message");
   });
 
-  test("GET /students/:id should return 404 for unknown student", async () => {
+  it("GET /students/:id should return 404 for unknown student", async function () {
     const res = await request(app).get("/students/999999");
-    expect(res.statusCode).toBe(404);
+    expect(res.status).to.equal(404);
   });
 
-  test("PUT /students/:id should update an existing student", async () => {
+  it("PUT /students/:id should update an existing student", async function () {
     const created = await request(app).post("/students").send({
       name: "Meena",
       email: "meena@example.com",
@@ -67,11 +68,11 @@ describe("Student API", () => {
       course: "DevOps",
     });
 
-    expect(updated.statusCode).toBe(200);
-    expect(updated.body.course).toBe("DevOps");
+    expect(updated.status).to.equal(200);
+    expect(updated.body.course).to.equal("DevOps");
   });
 
-  test("DELETE /students/:id should delete an existing student", async () => {
+  it("DELETE /students/:id should delete an existing student", async function () {
     const created = await request(app).post("/students").send({
       name: "Meena",
       email: "meena@example.com",
@@ -81,9 +82,9 @@ describe("Student API", () => {
     const id = created.body.id;
 
     const del = await request(app).delete(`/students/${id}`);
-    expect(del.statusCode).toBe(200);
+    expect(del.status).to.equal(200);
 
     const list = await request(app).get("/students");
-    expect(list.body.length).toBe(0);
+    expect(list.body.length).to.equal(0);
   });
 });
