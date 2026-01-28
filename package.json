@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/server.js",
-
+    "sbom": "cyclonedx-npm --output-file sbom.json --output-format json"
     "test": "npm run test:ci",
     "test:ci": "nyc --reporter=text --reporter=lcov --reporter=html --check-coverage --lines=80 --functions=80 --branches=70 --statements=80 mocha \"tests/**/*.test.js\" --timeout 15000 --reporter mocha-junit-reporter --reporter-options mochaFile=reports/junit/mocha-junit.xml",
     "test:html": "mocha \"tests/**/*.test.js\" --timeout 15000 --reporter mochawesome --reporter-options reportDir=reports/mochawesome,reportFilename=mochawesome,html=true,json=true,quiet=true"
