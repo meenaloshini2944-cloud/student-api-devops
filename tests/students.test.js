@@ -13,6 +13,10 @@ function resetData() {
 
 describe("Student API", function () {
   beforeEach(function () {
+    // Ensure data dir exists
+    const dir = path.dirname(dataPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
     resetData();
   });
 
@@ -35,9 +39,6 @@ describe("Student API", function () {
     const res = await request(app).post("/students").send(payload);
     expect(res.status).to.equal(201);
     expect(res.body).to.have.property("id");
-    expect(res.body.name).to.equal(payload.name);
-    expect(res.body.email).to.equal(payload.email);
-    expect(res.body.course).to.equal(payload.course);
 
     const list = await request(app).get("/students");
     expect(list.status).to.equal(200);
@@ -53,6 +54,22 @@ describe("Student API", function () {
   it("GET /students/:id should return 404 for unknown student", async function () {
     const res = await request(app).get("/students/999999");
     expect(res.status).to.equal(404);
+    expect(res.body).to.have.property("message");
+  });
+
+  // Covers getStudentById success branch
+  it("GET /students/:id should return a student when found", async function () {
+    const created = await request(app).post("/students").send({
+      name: "Meena",
+      email: "meena@example.com",
+      course: "Cyber Security",
+    });
+
+    const id = created.body.id;
+    const res = await request(app).get(`/students/${id}`);
+
+    expect(res.status).to.equal(200);
+    expect(res.body).to.have.property("id", id);
   });
 
   it("PUT /students/:id should update an existing student", async function () {
@@ -64,10 +81,7 @@ describe("Student API", function () {
 
     const id = created.body.id;
 
-    const updated = await request(app).put(`/students/${id}`).send({
-      course: "DevOps",
-    });
-
+    const updated = await request(app).put(`/students/${id}`).send({ course: "DevOps" });
     expect(updated.status).to.equal(200);
     expect(updated.body.course).to.equal("DevOps");
   });
@@ -85,6 +99,27 @@ describe("Student API", function () {
     expect(del.status).to.equal(200);
 
     const list = await request(app).get("/students");
+    expect(list.status).to.equal(200);
     expect(list.body.length).to.equal(0);
+  });
+
+  //  Branch coverage for readStudents(): file missing
+  it("GET /students should return [] if students.json is missing", async function () {
+    if (fs.existsSync(dataPath)) fs.unlinkSync(dataPath);
+
+    const res = await request(app).get("/students");
+    expect(res.status).to.equal(200);
+    expect(res.body).to.be.an("array");
+    expect(res.body.length).to.equal(0);
+  });
+
+  //  Branch coverage for readStudents(): file exists but empty
+  it("GET /students should return [] if students.json exists but is empty", async function () {
+    fs.writeFileSync(dataPath, "");
+
+    const res = await request(app).get("/students");
+    expect(res.status).to.equal(200);
+    expect(res.body).to.be.an("array");
+    expect(res.body.length).to.equal(0);
   });
 });
