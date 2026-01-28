@@ -91,21 +91,19 @@ pipeline {
       }
     }
 
-    stage('4) Code Quality & SAST (SonarQube + Semgrep)') {
+   stage('4) Code Quality (SonarQube)') {
   steps {
     script {
-
-      // ---------- SonarQube ----------
+      def scannerHome = tool 'SonarScanner'
       withSonarQubeEnv('SonarQube') {
         bat """
-        sonar-scanner ^
-          -Dsonar.projectKey=student-api ^
-          -Dsonar.projectName=student-api ^
-          -Dsonar.sources=src ^
-          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+          "${scannerHome}\\bin\\sonar-scanner.bat" ^
+            -Dsonar.projectKey=student-api ^
+            -Dsonar.projectName=student-api ^
+            -Dsonar.sources=src ^
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
         """
       }
-
       // Optional: Wait for Quality Gate (HD feature)
       timeout(time: 5, unit: 'MINUTES') {
         waitForQualityGate abortPipeline: true
