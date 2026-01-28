@@ -1,18 +1,14 @@
-# Use an LTS Node image for stability
 FROM node:20-alpine
-
-# Create app directory
 WORKDIR /app
 
-# Install dependencies first (better caching)
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
-# Copy source
 COPY src ./src
 
-# Expose port
-EXPOSE 3000
+# Create non-root user and use it
+RUN addgroup -S app && adduser -S app -G app
+USER app
 
-# Start server
+EXPOSE 3000
 CMD ["node", "src/server.js"]
