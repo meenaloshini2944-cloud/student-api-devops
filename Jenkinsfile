@@ -91,7 +91,7 @@ pipeline {
       }
     }
 
-   stage('4) Code Quality (SonarQube)') {
+   stage('4) Code Quality & SAST (SonarQube + Semgrep)') {
   steps {
     script {
       def scannerHome = tool 'SonarScanner'
@@ -104,17 +104,19 @@ pipeline {
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
         """
       }
-      // Optional: Wait for Quality Gate (HD feature)
-      timeout(time: 5, unit: 'MINUTES') {
-        waitForQualityGate abortPipeline: true
-      }
 
-      // ---------- Semgrep (SAST) ----------
-      echo "Running Semgrep SAST scan..."
+      // Semgrep (open-source SAST)
       bat """
-      docker run --rm -v "%CD%:/src" returntocorp/semgrep semgrep scan --config=auto --severity ERROR
+        docker run --rm -v "%CD%:/src" returntocorp/semgrep semgrep scan --config=auto --severity ERROR
       """
 
+      // Wait for Sonar Quality Gate (increase timeout)
+      timeout(time: 15, unit: 'MINUTES') {
+        def qg = waitForQualityGate()
+        if (qg.status != 'OK') {
+          error "Pipeline failed due to SonarQube Quality Gate: ${qg.status}"
+        }
+      }
     }
   }
 }
