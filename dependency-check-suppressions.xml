@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+
+    <!-- Example: Suppress false positive for dev-only test library -->
+    <suppress>
+        <notes>
+            Mocha is a development-only dependency used for testing.
+            This CVE does not affect production runtime.
+        </notes>
+        <packageUrl regex="true">
+            ^pkg:npm/mocha@
+        </packageUrl>
+        <cve>CVE-2022-XXXX</cve>
+    </suppress>
+
+    <!-- Example: Suppress optional build tool vulnerability -->
+    <suppress>
+        <notes>
+            Glob is a transitive dependency used during build/test only.
+            Not included in production Docker image (--omit=dev).
+        </notes>
+        <packageUrl regex="true">
+            ^pkg:npm/glob@
+        </packageUrl>
+        <cve>CVE-2021-XXXX</cve>
+    </suppress>
+
+    <!-- Template for future real suppressions -->
+    <suppress>
+        <notes>
+            TEMPLATE: Add real CVE after triage and risk acceptance approval.
+        </notes>
+        <packageUrl regex="true">
+            ^pkg:npm/REPLACE_PACKAGE@
+        </packageUrl>
+        <cve>CVE-YYYY-NNNN</cve>
+    </suppress>
+
+</suppressions>
