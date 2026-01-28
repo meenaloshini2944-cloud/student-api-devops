@@ -1,0 +1,27 @@
+# Grype policy configuration
+# Enforces consistent vulnerability scanning behaviour
+
+severity-cutoff: high
+
+fail-on:
+  - high
+  - critical
+
+output:
+  - table
+  - json
+
+file:
+  enabled: true
+
+db:
+  auto-update: true
+
+ignore:
+  # Example template for future ignored CVEs after formal risk acceptance
+  - vulnerability: CVE-YYYY-NNNN
+    reason: "False positive / not exploitable in runtime container"
+    expires: "2026-12-31"
+
+log:
+  level: info
