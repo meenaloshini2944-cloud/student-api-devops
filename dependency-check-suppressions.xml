@@ -1,29 +1,42 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
 
-    <!-- Suppression entries must use REAL CVE IDs (CVE-YYYY-NNNN).
-         Placeholders like CVE-2022-XXXX will break Dependency-Check. -->
+    <!-- ========================================================= -->
+    <!--  Example 1: Suppress dev-only dependency vulnerability   -->
+    <!-- ========================================================= -->
+    <!-- Replace CVE-2023-0000 with REAL CVE after triage -->
+    <!-- Remove this block if not needed -->
 
-    <!-- Mocha: dev-only testing dependency
-         Add a real <cve> only after triage confirms false-positive / not-applicable. -->
+    <!--
     <suppress>
         <notes>
             Mocha is a development-only dependency used for testing.
-            Not included in production runtime image (--omit=dev).
+            It is not included in the production Docker image (--omit=dev).
+            Risk accepted after review.
         </notes>
-        <packageUrl regex="true">^pkg:npm/mocha@.*</packageUrl>
-        <!-- <cve>CVE-2022-12345</cve> -->
+        <packageUrl regex="true">^pkg:npm/mocha@</packageUrl>
+        <cve>CVE-2023-0000</cve>
     </suppress>
+    -->
 
-    <!-- Glob: transitive build/test dependency
-         Add a real <cve> only after triage. -->
+    <!-- ========================================================= -->
+    <!--  Example 2: Suppress CVSS below threshold                -->
+    <!-- ========================================================= -->
+    <!-- This suppresses vulnerabilities below CVSS 7.0 -->
+    <!-- Uncomment ONLY if approved by security review -->
+
+    <!--
     <suppress>
         <notes>
-            Glob is a transitive dependency used during build/test only.
-            Not included in production Docker image (--omit=dev).
+            Suppressing vulnerabilities below defined risk threshold.
+            Approved by security governance review.
         </notes>
-        <packageUrl regex="true">^pkg:npm/glob@.*</packageUrl>
-        <!-- <cve>CVE-2021-12345</cve> -->
+        <cvssBelow>7.0</cvssBelow>
     </suppress>
+    -->
+
+    <!-- ========================================================= -->
+    <!-- TEMPLATE: Add real suppressions below after triage       -->
+    <!-- ========================================================= -->
 
 </suppressions>
