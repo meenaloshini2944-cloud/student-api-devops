@@ -1,39 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
 
-    <!-- Example: Suppress false positive for dev-only test library -->
+    <!-- Suppression entries must use REAL CVE IDs (CVE-YYYY-NNNN).
+         Placeholders like CVE-2022-XXXX will break Dependency-Check. -->
+
+    <!-- Mocha: dev-only testing dependency
+         Add a real <cve> only after triage confirms false-positive / not-applicable. -->
     <suppress>
         <notes>
             Mocha is a development-only dependency used for testing.
-            This CVE does not affect production runtime.
+            Not included in production runtime image (--omit=dev).
         </notes>
-        <packageUrl regex="true">
-            ^pkg:npm/mocha@
-        </packageUrl>
-        <cve>CVE-2022-XXXX</cve>
+        <packageUrl regex="true">^pkg:npm/mocha@.*</packageUrl>
+        <!-- <cve>CVE-2022-12345</cve> -->
     </suppress>
 
-    <!-- Example: Suppress optional build tool vulnerability -->
+    <!-- Glob: transitive build/test dependency
+         Add a real <cve> only after triage. -->
     <suppress>
         <notes>
             Glob is a transitive dependency used during build/test only.
             Not included in production Docker image (--omit=dev).
         </notes>
-        <packageUrl regex="true">
-            ^pkg:npm/glob@
-        </packageUrl>
-        <cve>CVE-2021-XXXX</cve>
-    </suppress>
-
-    <!-- Template for future real suppressions -->
-    <suppress>
-        <notes>
-            TEMPLATE: Add real CVE after triage and risk acceptance approval.
-        </notes>
-        <packageUrl regex="true">
-            ^pkg:npm/REPLACE_PACKAGE@
-        </packageUrl>
-        <cve>CVE-YYYY-NNNN</cve>
+        <packageUrl regex="true">^pkg:npm/glob@.*</packageUrl>
+        <!-- <cve>CVE-2021-12345</cve> -->
     </suppress>
 
 </suppressions>
