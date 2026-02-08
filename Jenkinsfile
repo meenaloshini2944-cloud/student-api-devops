@@ -379,38 +379,36 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
   }
   
       stage('10) Release (Promote to Production)') {
-    steps {
-        script {
-            bat """
-            echo [Stage 10] =========================================
-            echo [Stage 10] Production Promotion Started
-            echo [Stage 10] =========================================
+  steps {
+    script {
+      bat """
+        echo [Stage 10] Production Promotion Started
 
-            echo [10.1] Tagging release image...
-            docker tag student-api:${BUILD_NUMBER} student-api:prod
+        echo [10.1] Tagging build image as release...
+        docker tag student-api:%BUILD_NUMBER% student-api:%BUILD_NUMBER%
 
-            echo [10.2] Stopping existing production container...
-            docker compose -f docker-compose.prod.yml down --remove-orphans
+        echo [10.2] Stop existing production stack (if any)...
+        docker compose -f docker-compose.prod.yml down --remove-orphans
 
-            echo [10.3] Removing old production container (if exists)...
-            docker rm -f student-api-prod 2>nul
+        echo [10.3] Remove old production container (if exists)...
+        docker rm -f student-api-prod 2>nul
 
-            echo [10.4] Starting production container...
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+        echo [10.4] Start production stack...
+        docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
-            echo [10.5] Waiting for production health...
+        echo [10.5] Wait for production health (http://localhost:3002/health)...
+        for /L %%i in (1,1,30) do (
+          curl -fsS http://localhost:3002/health && exit /b 0
+          timeout /t 2 >nul
+        )
 
-            for /L %%i in (1,1,30) do (
-                curl -fsS http://localhost:3002/health && exit /b 0
-                timeout /t 2 >nul
-            )
-
-            echo ERROR: Production health check failed
-            docker logs --tail 200 student-api-prod
-            exit /b 1
-            """
-        }
+        echo ERROR: Production health check failed
+        docker compose -f docker-compose.prod.yml ps
+        docker logs --tail 200 student-api-prod
+        exit /b 1
+      """
     }
+  }
 }
     stage('11) Production Health Check') {
       steps {
