@@ -169,9 +169,8 @@ pipeline {
         docker run --rm ^
           -v "%CD%:/src" ^
           anchore/grype:latest ^
-          sbom:/src/reports/sbom/sbom.json ^
-          -c /src/.grype.yaml ^
-          -o table
+          sbom:/src/reports/sbom/sbom.json -o table
+
 
         REM Grype will exit non-zero if policy says fail-on high/critical (from .grype.yaml)
       '''
