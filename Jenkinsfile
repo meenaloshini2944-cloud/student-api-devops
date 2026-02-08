@@ -330,10 +330,10 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
   }
 }
 
-   stage('9) Staging Stability Gate') {
+   sstage('9) Staging Stability Gate') {
   steps {
     script {
-      bat """
+      bat '''
         echo [Stage 9] Checking staging container...
 
         docker ps --filter "name=student-api-staging" --filter "status=running" --format "{{.Names}}" | findstr student-api-staging
@@ -345,8 +345,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
         echo [Stage 9] Checking /health endpoint...
 
         powershell -NoProfile -Command ^
-          "$r = Invoke-WebRequest -UseBasicParsing 'http://localhost:3001/health'; ^
-           if ($r.StatusCode -ne 200) { exit 1 }"
+        "$res = Invoke-WebRequest -UseBasicParsing 'http://localhost:3001/health'; if ($res.StatusCode -ne 200) { exit 1 }"
 
         if %errorlevel% neq 0 (
           echo ERROR: Health endpoint failed
@@ -356,8 +355,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
         echo [Stage 9] Checking health JSON status...
 
         powershell -NoProfile -Command ^
-          "$r = Invoke-RestMethod 'http://localhost:3001/health'; ^
-           if ($r.status -ne 'UP') { exit 1 }"
+        "$res = Invoke-RestMethod 'http://localhost:3001/health'; if ($res.status -ne 'UP') { exit 1 }"
 
         if %errorlevel% neq 0 (
           echo ERROR: Health JSON not reporting UP
@@ -367,20 +365,20 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
         echo [Stage 9] Checking /students endpoint...
 
         powershell -NoProfile -Command ^
-          "$r = Invoke-WebRequest -UseBasicParsing 'http://localhost:3001/students'; ^
-           if ($r.StatusCode -ne 200) { exit 1 }"
+        "$res = Invoke-WebRequest -UseBasicParsing 'http://localhost:3001/students'; if ($res.StatusCode -ne 200) { exit 1 }"
 
         if %errorlevel% neq 0 (
           echo ERROR: Students endpoint failed
           exit /b 1
         )
+
         echo Stage 9 completed successfully
-        """
+        '''
+    }
     }
   }
-}
-
-    stage('10) Release (Promote to Prod)') {
+  
+      stage('10) Release (Promote to Prod)') {
       steps {
         script {
           if (isUnix()) {
