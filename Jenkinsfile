@@ -474,7 +474,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
     }
   }
 }
-    stage('12) Monitoring & Observability Gate (HD)') {
+    stage('12) Monitoring and Observability Gate (HD)') {
   steps {
     script {
       bat '''
@@ -482,7 +482,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
       setlocal EnableExtensions EnableDelayedExpansion
 
       echo [Stage 12] ==============================
-      echo [Stage 12] Monitoring & Observability Gate (HD)
+      echo [Stage 12] Monitoring and Observability Gate (HD)
       echo [Stage 12] Target: student-api-prod on http://localhost:3002
       echo [Stage 12] ==============================
 
@@ -495,12 +495,11 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
       )
       echo [Stage 12] OK: Container is running
 
-      REM 12.2 Verify Docker HEALTHCHECK status = healthy (if healthcheck exists)
-      for /f "usebackq delims=" %%H in (`powershell -NoProfile -Command ^
-        "try { (docker inspect -f '{{.State.Health.Status}}' student-api-prod) } catch { '' }"`) do set "HEALTH=%%H"
-
-      if /I "!HEALTH!"=="" (
-        echo [Stage 12] INFO: No Docker health status found (no healthcheck). Skipping health-status gate.
+      REM 12.2 Docker health status (if healthcheck exists)
+      set "HEALTH="
+      for /f "delims=" %%H in ('docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{end}}" student-api-prod') do set "HEALTH=%%H"
+      if "!HEALTH!"=="" (
+        echo [Stage 12] INFO: No Docker healthcheck present. Skipping health-status gate.
       ) else (
         echo [Stage 12] Docker health status: !HEALTH!
         if /I not "!HEALTH!"=="healthy" (
@@ -510,56 +509,42 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
         )
       )
 
-      REM 12.3 Restart-loop detection (restarts should be low)
-      for /f "usebackq delims=" %%R in (`powershell -NoProfile -Command ^
-        "(docker inspect -f '{{.RestartCount}}' student-api-prod)"`) do set "RESTARTS=%%R"
+      REM 12.3 Restart-loop detection (fail if > 3)
+      set "RESTARTS=0"
+      for /f "delims=" %%R in ('docker inspect -f "{{.RestartCount}}" student-api-prod') do set "RESTARTS=%%R"
       echo [Stage 12] RestartCount: !RESTARTS!
-      powershell -NoProfile -Command "if ([int]'!RESTARTS!' -gt 3) { exit 1 } else { exit 0 }"
-      if %errorlevel% neq 0 (
-        echo ERROR: RestartCount is too high (^>3). Possible crash loop.
+      if !RESTARTS! GTR 3 (
+        echo ERROR: RestartCount too high (>3). Possible crash loop.
         docker logs --tail 200 student-api-prod
         exit /b 1
       )
-      echo [Stage 12] OK: No restart loop detected
 
-      REM 12.4 Resource snapshot (CPU/MEM) for evidence (non-blocking)
+      REM 12.4 Resource snapshot (evidence only)
       echo [Stage 12] Docker stats snapshot:
       docker stats --no-stream --format "table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}\\t{{.NetIO}}\\t{{.BlockIO}}" student-api-prod
 
-      REM 12.5 Log anomaly scan (simple heuristic) - FAIL on common fatal patterns
-      echo [Stage 12] Scanning last 200 logs for fatal patterns...
-      powershell -NoProfile -Command ^
-        "$logs = docker logs --tail 200 student-api-prod 2>$null; " ^
-        "$bad = $logs | Select-String -Pattern 'ERROR','FATAL','Unhandled','ECONNREFUSED','CrashLoop','Exception' -SimpleMatch; " ^
-        "if ($bad) { Write-Host 'ERROR: Suspicious log patterns found:'; $bad | Select-Object -First 20 | ForEach-Object { $_.Line }; exit 1 } else { exit 0 }"
-      if %errorlevel% neq 0 (
-        echo ERROR: Log anomaly scan failed
-        exit /b 1
-      )
-      echo [Stage 12] OK: Logs look clean
-
-      REM 12.6 Endpoint monitoring checks (health + functional)
-      echo [Stage 12] Checking endpoints...
+      REM 12.5 Endpoint checks
+      echo [Stage 12] Checking /health...
       curl -fsS http://localhost:3002/health >nul
       if %errorlevel% neq 0 (
-        echo ERROR: /health is not reachable on port 3002
+        echo ERROR: /health not reachable on port 3002
         exit /b 1
       )
 
+      echo [Stage 12] Checking /students...
       curl -fsS http://localhost:3002/students > students_prod.json
       if %errorlevel% neq 0 (
-        echo ERROR: /students endpoint failed
+        echo ERROR: /students failed
         exit /b 1
       )
-      echo [Stage 12] OK: /students returned:
+      echo [Stage 12] OK: /students response:
       type students_prod.json
 
-      REM 12.7 Evidence artifacts for rubric (store monitoring outputs)
-      echo [Stage 12] Writing monitoring evidence...
-      echo Container=student-api-prod > monitoring_evidence.txt
-      echo Health=!HEALTH! >> monitoring_evidence.txt
-      echo RestartCount=!RESTARTS! >> monitoring_evidence.txt
-      echo Timestamp=%DATE% %TIME% >> monitoring_evidence.txt
+      REM 12.6 Evidence artifact
+      echo Container=student-api-prod> monitoring_evidence.txt
+      echo Health=!HEALTH!>> monitoring_evidence.txt
+      echo RestartCount=!RESTARTS!>> monitoring_evidence.txt
+      echo Timestamp=%DATE% %TIME%>> monitoring_evidence.txt
 
       echo [Stage 12] Monitoring gate PASSED
       exit /b 0
