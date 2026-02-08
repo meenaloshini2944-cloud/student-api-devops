@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="Mocha Tests" time="0.243" tests="10" failures="0">
+  <testsuite name="Root Suite" timestamp="2026-02-08T11:36:43" tests="0" time="0.000" failures="0">
+  </testsuite>
+  <testsuite name="Student API" timestamp="2026-02-08T11:36:43" tests="10" file="C:\Users\meena\student-api-devops\tests\students.test.js" time="0.241" failures="0">
+    <testcase name="Student API GET /health should return status UP" time="0.040" classname="GET /health should return status UP">
+    </testcase>
+    <testcase name="Student API GET /students should return empty array initially" time="0.008" classname="GET /students should return empty array initially">
+    </testcase>
+    <testcase name="Student API POST /students should create a student" time="0.112" classname="POST /students should create a student">
+    </testcase>
+    <testcase name="Student API POST /students should fail if required fields missing" time="0.005" classname="POST /students should fail if required fields missing">
+    </testcase>
+    <testcase name="Student API GET /students/:id should return 404 for unknown student" time="0.005" classname="GET /students/:id should return 404 for unknown student">
+    </testcase>
+    <testcase name="Student API GET /students/:id should return a student when found" time="0.009" classname="GET /students/:id should return a student when found">
+    </testcase>
+    <testcase name="Student API PUT /students/:id should update an existing student" time="0.013" classname="PUT /students/:id should update an existing student">
+    </testcase>
+    <testcase name="Student API DELETE /students/:id should delete an existing student" time="0.019" classname="DELETE /students/:id should delete an existing student">
+    </testcase>
+    <testcase name="Student API GET /students should return [] if students.json is missing" time="0.006" classname="GET /students should return [] if students.json is missing">
+    </testcase>
+    <testcase name="Student API GET /students should return [] if students.json exists but is empty" time="0.007" classname="GET /students should return [] if students.json exists but is empty">
+    </testcase>
+  </testsuite>
+</testsuites>

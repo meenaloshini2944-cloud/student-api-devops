@@ -140,40 +140,41 @@ pipeline {
         )
       '''
 
-      // ---------- 5.2 OWASP Dependency-Check ----------
-      // Uses Docker image so you don't need Java/Dependency-Check installed on Jenkins
-      // Output: reports/dependency-check (HTML + XML + JSON)
-      bat '''
-        echo [Stage 5.2] Running OWASP Dependency-Check...
-        if not exist reports\\dependency-check mkdir reports\\dependency-check
+// ---------- 5.2 OWASP Dependency-Check ----------
+withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
 
-        docker run --rm ^
-          -v "%CD%:/src" ^
-          owasp/dependency-check:latest ^
-          --scan /src ^
-          --format "ALL" ^
-          --out /src/reports/dependency-check ^
-          --suppression /src/dependency-check-suppressions.xml ^
-          --nvdApiKey "" ^
-          --failOnCVSS 7
+  bat '''
+    echo [Stage 5.2] Running OWASP Dependency-Check with NVD API Key...
 
-        REM Dependency-Check returns non-zero if CVSS threshold hit. That’s intended.
-      '''
+    if not exist reports\\dependency-check mkdir reports\\dependency-check
+
+    docker run --rm ^
+      -v "C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\student-api-devops:/src" ^
+      owasp/dependency-check:latest ^
+      --scan /src/package.json ^
+      --scan /src/package-lock.json ^
+      --format "ALL" ^
+      --out /src/reports/dependency-check ^
+      --suppression /src/dependency-check-suppressions.xml ^
+      --nvdApiKey %NVD_KEY% ^
+      --failOnCVSS 7
+  '''
+}
 
       // ---------- 5.3 Grype scan on SBOM ----------
       // Scans the SBOM you generated (sbom.json)
       // Uses config policy from your repo: .grype.yaml
       bat '''
-        echo [Stage 5.3] Running Grype scan against SBOM...
-        docker run --rm ^
-          -v "%CD%:/src" ^
-          anchore/grype:latest ^
-          sbom:/src/reports/sbom/sbom.json ^
-          -c /src/.grype.yaml ^
-          -o table
+  echo [Stage 5.3] Running Grype scan against SBOM...
+  if not exist grype-db mkdir grype-db
 
-        REM Grype will exit non-zero if policy says fail-on high/critical (from .grype.yaml)
-      '''
+  docker run --rm ^
+    -v "C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\student-api-devops:/src" ^
+    -v "C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\student-api-devops\\grype-db:/root/.cache/grype/db" ^
+    anchore/grype:latest ^
+    sbom:/src/reports/sbom/sbom.json -o table -c /src/.grype.yaml
+'''
+
     }
   }
 
@@ -196,14 +197,88 @@ pipeline {
 }
 
 
-    stage('6) Build Artefact (Docker Image)') {
-      steps {
-        script {
-          if (isUnix()) sh "docker build -t ${IMAGE_BUILD} ."
-          else          bat "docker build -t %IMAGE_BUILD% ."
-        }
-      }
+   stage('6) Build Artefact + Container QA (Buildx + Hadolint + Trivy)') {
+  steps {
+    script {
+      bat '''
+        echo [Stage 6.0] Preparing folders...
+        if not exist reports mkdir reports
+        if not exist reports\\container mkdir reports\\container
+        if not exist reports\\container\\trivy mkdir reports\\container\\trivy
+
+        echo [Stage 6.1] Hadolint - Dockerfile quality gate...
+        docker run --rm -i hadolint/hadolint < Dockerfile
+
+        echo [Stage 6.2] Enable Docker BuildKit / Buildx...
+        docker buildx version
+        docker buildx create --name jenkins-builder --use 2>NUL || docker buildx use jenkins-builder
+        docker buildx inspect --bootstrap
+
+        echo [Stage 6.3] Build image with Buildx + cache (LOAD into local Docker)...
+        if not exist .buildx-cache mkdir .buildx-cache
+
+        docker buildx build ^
+          --progress=plain ^
+          --tag student-api:%BUILD_NUMBER% ^
+          --cache-from=type=local,src=.buildx-cache ^
+          --cache-to=type=local,dest=.buildx-cache,mode=max ^
+          --load ^
+          .
+
+        echo [Stage 6.3b] Export image to tar (so Trivy can scan without Docker socket)...
+        docker save -o reports\\container\\student-api_%BUILD_NUMBER%.tar student-api:%BUILD_NUMBER%
+
+        echo [Stage 6.4] Trivy scan using --input (JSON evidence)...
+        docker run --rm ^
+          -v "%CD%:/workspace" ^
+          -v trivy-cache:/root/.cache/ ^
+          aquasec/trivy:latest ^
+          image --scanners vuln ^
+          --input /workspace/reports/container/student-api_%BUILD_NUMBER%.tar ^
+          --format json ^
+          --output /workspace/reports/container/trivy/trivy-image.json
+
+        echo [Stage 6.4b] Trivy console summary (HIGH/CRITICAL)...
+        docker run --rm ^
+          -v "%CD%:/workspace" ^
+          -v trivy-cache:/root/.cache/ ^
+          aquasec/trivy:latest ^
+          image --scanners vuln ^
+          --input /workspace/reports/container/student-api_%BUILD_NUMBER%.tar ^
+          --severity HIGH,CRITICAL ^
+          --no-progress
+
+        echo [Stage 6.4c] Trivy gate (fail build on HIGH/CRITICAL)...
+        docker run --rm ^
+          -v "%CD%:/workspace" ^
+          -v trivy-cache:/root/.cache/ ^
+          aquasec/trivy:latest ^
+          image --scanners vuln ^
+          --input /workspace/reports/container/student-api_%BUILD_NUMBER%.tar ^
+          --exit-code 1 ^
+          --severity HIGH,CRITICAL ^
+          --no-progress
+
+        echo [Stage 6] Completed: Buildx build + Hadolint + Trivy gate OK.
+      '''
     }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: 'reports/container/**', fingerprint: true
+      publishHTML(target: [
+        allowMissing: true,
+        alwaysLinkToLastBuild: true,
+        keepAll: true,
+        reportDir: 'reports/container/trivy',
+        reportFiles: 'trivy-image.json',
+        reportName: 'Trivy Image Scan (JSON)'
+      ])
+    }
+  }
+}
+
 
     stage('7) Deploy to Staging') {
       steps {
