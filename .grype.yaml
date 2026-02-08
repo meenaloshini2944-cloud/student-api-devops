@@ -18,10 +18,9 @@ db:
   auto-update: true
 
 ignore:
-  # Example template for future ignored CVEs after formal risk acceptance
-  - vulnerability: CVE-YYYY-NNNN
-    reason: "False positive / not exploitable in runtime container"
-    expires: "2026-12-31"
+  - vulnerability: CVE-XXXX
+    file: "src/app.js"
+
 
 log:
   level: info
