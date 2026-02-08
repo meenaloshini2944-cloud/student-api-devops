@@ -374,9 +374,8 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
           echo ERROR: Students endpoint failed
           exit /b 1
         )
-
         echo Stage 9 completed successfully
-      """
+        """
     }
   }
 }
