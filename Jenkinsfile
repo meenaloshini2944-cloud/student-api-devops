@@ -410,20 +410,64 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
     }
   }
 }
-    stage('11) Production Health Check') {
-      steps {
-        script {
-          def url = "http://localhost:${PROD_PORT}${HEALTH_PATH}"
-          if (isUnix()) sh "curl -fsS ${url}"
-          else          bat "powershell -NoProfile -Command \"(Invoke-WebRequest -UseBasicParsing '${url}').StatusCode\""
-        }
-      }
+    stage('11) Production Health & Stability Gate') {
+  steps {
+    script {
+      bat """
+      echo [Stage 11] Production Health & Stability Gate (port 3002)
+
+      REM 11.1 Ensure container exists and is running
+      docker ps --filter "name=student-api-prod" --filter "status=running" --format "{{.Names}}" | findstr /I "student-api-prod" >nul
+      if %errorlevel% neq 0 (
+        echo ERROR: Production container is not running
+        docker ps -a --filter "name=student-api-prod"
+        exit /b 1
+      )
+
+      REM 11.2 Require 3 consecutive successful /health responses
+      set "OK=0"
+      for /L %%i in (1,1,60) do (
+        curl -fsS http://localhost:3002/health >nul
+        if !errorlevel! equ 0 (
+          set /A OK+=1
+          echo [Stage 11] Health OK (!OK!/3)
+        ) else (
+          set "OK=0"
+          echo [Stage 11] Health not ready yet... retrying
+        )
+        if !OK! geq 3 goto :HEALTHY
+        timeout /t 2 >nul
+      )
+
+      echo ERROR: Production health did not become stable
+      goto :FAIL
+
+      :HEALTHY
+      echo [Stage 11] Health stable ✅
+
+      REM 11.3 Functional smoke test (API returns JSON)
+      curl -fsS http://localhost:3002/students > students_prod.json
+      if %errorlevel% neq 0 (
+        echo ERROR: /students endpoint failed
+        goto :FAIL
+      )
+      echo [Stage 11] /students OK ✅
+      type students_prod.json
+
+      exit /b 0
+
+      :FAIL
+      echo --- docker compose ps ---
+      docker compose -f docker-compose.prod.yml ps
+      echo --- last 200 logs ---
+      docker logs --tail 200 student-api-prod
+      exit /b 1
+      """
     }
   }
-
   post {
     always {
-      archiveArtifacts artifacts: "reports/**, coverage/**", allowEmptyArchive: true
+      archiveArtifacts artifacts: "students_prod.json", onlyIfSuccessful: false
     }
   }
 }
