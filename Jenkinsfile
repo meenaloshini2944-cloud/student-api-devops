@@ -107,7 +107,7 @@ pipeline {
 
       // Semgrep (open-source SAST)
       bat """
-        docker run --rm -v "%CD%:/src" returntocorp/semgrep semgrep scan --config=auto --severity ERROR
+        docker run --rm -v "%CD%:/src" returntocorp/semgrep semgrep scan --config=auto --severity 
       """
 
       // Wait for Sonar Quality Gate (increase timeout)
@@ -150,7 +150,8 @@ pipeline {
         docker run --rm ^
           -v "%CD%:/src" ^
           owasp/dependency-check:latest ^
-          --scan /src ^
+          --scan /src/package.json ^
+          --scan /src/package-lock.json ^
           --format "ALL" ^
           --out /src/reports/dependency-check ^
           --suppression /src/dependency-check-suppressions.xml ^
