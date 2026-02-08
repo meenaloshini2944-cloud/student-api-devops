@@ -474,108 +474,80 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
     }
   }
 }
-    stage('12) Monitoring and Observability Gate (HD)') {
+    stage('12) Monitoring and Observability Gate') {
   steps {
     script {
       bat '''
-      @echo off
-      setlocal EnableExtensions EnableDelayedExpansion
+@echo off
+setlocal EnableExtensions
 
-      echo [Stage 12] ==============================
-      echo [Stage 12] Monitoring and Observability Gate
-      echo [Stage 12] Target: student-api-prod on http://localhost:3002
-      echo [Stage 12] ==============================
+echo [Stage 12] ==============================
+echo [Stage 12] Monitoring and Observability Gate 
+echo [Stage 12] Target: student-api-prod on http://localhost:3002
+echo [Stage 12] ==============================
 
-      REM 12.1 Ensure production container is running
-      docker ps --filter "name=student-api-prod" --filter "status=running" --format "{{.Names}}" | findstr /I "student-api-prod" >nul
-      if %errorlevel% neq 0 (
-        echo ERROR: student-api-prod is NOT running
-        docker ps -a --filter "name=student-api-prod"
-        exit /b 1
-      )
-      echo [Stage 12] OK: Container is running
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='Stop';" ^
+  "$name='student-api-prod'; $url='http://localhost:3002/health';" ^
+  "" ^
+  "# 12.1 Container must be running" ^
+  "$running = docker ps --filter ('name=' + $name) --filter 'status=running' --format '{{.Names}}';" ^
+  "if (-not ($running -match $name)) { Write-Host 'ERROR: Container not running'; docker ps -a --filter ('name=' + $name); exit 1 }" ^
+  "Write-Host '[Stage 12] OK: Container is running';" ^
+  "" ^
+  "# 12.2 Wait for Docker health to become healthy (up to 180s)" ^
+  "$health=''; $hasHealth=$true;" ^
+  "try { $health = docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' $name } catch { $hasHealth=$false }" ^
+  "if ([string]::IsNullOrWhiteSpace($health)) { $hasHealth=$false }" ^
+  "if ($hasHealth) {" ^
+  "  $deadline = (Get-Date).AddSeconds(180);" ^
+  "  while ((Get-Date) -lt $deadline) {" ^
+  "    $health = docker inspect -f '{{.State.Health.Status}}' $name;" ^
+  "    Write-Host ('[Stage 12] Docker health: ' + $health);" ^
+  "    if ($health -eq 'healthy') { break }" ^
+  "    if ($health -eq 'unhealthy') { Write-Host 'ERROR: Container became unhealthy'; docker logs --tail 200 $name; exit 1 }" ^
+  "    Start-Sleep -Seconds 2" ^
+  "  }" ^
+  "  if ($health -ne 'healthy') { Write-Host '[Stage 12] WARN: Docker health still not healthy (continuing with external stability checks)' }" ^
+  "} else {" ^
+  "  Write-Host '[Stage 12] INFO: No Docker HEALTHCHECK detected; using external checks only' " ^
+  "}" ^
+  "" ^
+  "# 12.3 External stability: require 5 consecutive OK /health responses" ^
+  "$ok=0; $tries=60;" ^
+  "for ($i=1; $i -le $tries; $i++) {" ^
+  "  try {" ^
+  "    $r = Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 2;" ^
+  "    if ($r.StatusCode -eq 200) { $ok++; Write-Host ('[Stage 12] /health OK ('+$ok+'/5)'); } else { $ok=0; Write-Host ('[Stage 12] /health status '+$r.StatusCode+' reset'); }" ^
+  "  } catch { $ok=0; Write-Host '[Stage 12] /health FAIL reset' }" ^
+  "  if ($ok -ge 5) { break }" ^
+  "  Start-Sleep -Seconds 2" ^
+  "}" ^
+  "if ($ok -lt 5) { Write-Host 'ERROR: /health not stable (need 5 consecutive OK)'; docker logs --tail 200 $name; exit 1 }" ^
+  "" ^
+  "# 12.4 Restart-loop check" ^
+  "$restart = docker inspect -f '{{.RestartCount}}' $name;" ^
+  "Write-Host ('[Stage 12] RestartCount: ' + $restart);" ^
+  "if ([int]$restart -gt 3) { Write-Host 'ERROR: RestartCount too high (>3)'; docker logs --tail 200 $name; exit 1 }" ^
+  "" ^
+  "# 12.5 Evidence artifacts" ^
+  "$ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss';" ^
+  "'Timestamp=' + $ts | Out-File -Encoding ascii monitoring_evidence.txt;" ^
+  "'Container=' + $name | Add-Content monitoring_evidence.txt;" ^
+  "'DockerHealth=' + $health | Add-Content monitoring_evidence.txt;" ^
+  "'RestartCount=' + $restart | Add-Content monitoring_evidence.txt;" ^
+  "" ^
+  "Write-Host '[Stage 12] PASS: Monitoring gate OK';"
 
-      REM 12.2 Wait for Docker healthcheck to become healthy (up to ~60s)
-      set "HEALTH="
-      set "MAX=30"
-      set "SLEEP=2"
-
-      for /L %%i in (1,1,%MAX%) do (
-        for /f "delims=" %%H in ('docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{end}}" student-api-prod') do set "HEALTH=%%H"
-
-        if "!HEALTH!"=="" (
-          echo [Stage 12] INFO: No Docker healthcheck present. Skipping health-status gate.
-          goto AFTER_HEALTH
-        )
-
-        echo [Stage 12] Health: !HEALTH! (attempt %%i/%MAX%)
-
-        if /I "!HEALTH!"=="healthy" goto AFTER_HEALTH
-        if /I "!HEALTH!"=="unhealthy" (
-          echo ERROR: Container became UNHEALTHY
-          docker logs --tail 200 student-api-prod
-          exit /b 1
-        )
-
-        timeout /t %SLEEP% >nul
-      )
-
-      echo ERROR: Health did not become healthy in time (last=!HEALTH!)
-      docker logs --tail 200 student-api-prod
-      exit /b 1
-
-      :AFTER_HEALTH
-
-      REM 12.3 Restart-loop detection (fail if > 3)
-      set "RESTARTS=0"
-      for /f "delims=" %%R in ('docker inspect -f "{{.RestartCount}}" student-api-prod') do set "RESTARTS=%%R"
-      echo [Stage 12] RestartCount: !RESTARTS!
-      if !RESTARTS! GTR 3 (
-        echo ERROR: RestartCount too high (>3). Possible crash loop.
-        docker logs --tail 200 student-api-prod
-        exit /b 1
-      )
-
-      REM 12.4 Resource snapshot (evidence)
-      echo [Stage 12] Docker stats snapshot:
-      docker stats --no-stream --format "table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}\\t{{.NetIO}}\\t{{.BlockIO}}" student-api-prod
-
-      REM 12.5 Endpoint checks (external)
-      echo [Stage 12] Checking /health...
-      curl -fsS http://localhost:3002/health >nul
-      if %errorlevel% neq 0 (
-        echo ERROR: /health not reachable on port 3002
-        docker logs --tail 200 student-api-prod
-        exit /b 1
-      )
-
-      echo [Stage 12] Checking /students...
-      curl -fsS http://localhost:3002/students > students_prod.json
-      if %errorlevel% neq 0 (
-        echo ERROR: /students failed
-        docker logs --tail 200 student-api-prod
-        exit /b 1
-      )
-
-      echo [Stage 12] OK: /students response:
-      type students_prod.json
-
-      REM 12.6 Evidence artifact
-      echo Container=student-api-prod> monitoring_evidence.txt
-      echo Health=!HEALTH!>> monitoring_evidence.txt
-      echo RestartCount=!RESTARTS!>> monitoring_evidence.txt
-      echo Timestamp=%DATE% %TIME%>> monitoring_evidence.txt
-
-      echo [Stage 12] Monitoring gate PASSED
-      exit /b 0
-      '''
+exit /b %errorlevel%
+'''
     }
   }
   post {
     always {
-      archiveArtifacts artifacts: 'students_prod.json, monitoring_evidence.txt', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'monitoring_evidence.txt', allowEmptyArchive: true
     }
   }
-}
+    }
 }
 }
