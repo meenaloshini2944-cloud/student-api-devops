@@ -2,11 +2,10 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && rm -f package-lock.json
 
 COPY src ./src
 
-# Create non-root user and use it
 RUN addgroup -S app && adduser -S app -G app
 USER app
 
