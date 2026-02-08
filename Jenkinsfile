@@ -299,7 +299,12 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
     script {
       bat """
         echo [Stage 7.1] Deploy to staging with Docker Compose...
-        docker compose -f docker-compose.staging.yml down
+
+        docker compose -f docker-compose.staging.yml down --remove-orphans
+
+        REM Force-remove container if it exists (fix name conflict)
+        docker rm -f student-api-staging 2>nul
+
         docker compose -f docker-compose.staging.yml up -d --remove-orphans
 
         echo [Stage 7.2] Wait for health...
@@ -307,6 +312,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
           curl -fsS http://localhost:3001/health && exit /b 0
           timeout /t 2 >nul
         )
+
         echo Staging health check failed.
         docker compose -f docker-compose.staging.yml ps
         docker logs --tail 200 student-api-staging
