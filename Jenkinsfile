@@ -165,19 +165,16 @@ pipeline {
       // Scans the SBOM you generated (sbom.json)
       // Uses config policy from your repo: .grype.yaml
       bat '''
-        echo [Stage 5.3] Running Grype scan against SBOM...
-        REM Create cache folder
-        if not exist grype-db mkdir grype-db
+  echo [Stage 5.3] Running Grype scan against SBOM...
+  if not exist grype-db mkdir grype-db
 
-        REM Run Grype with persistent DB cache
-        docker run --rm ^
-        -v "C:\ProgramData\Jenkins\.jenkins\workspace\student-api-devops:/src" ^
-        -v "C:\ProgramData\Jenkins\.jenkins\workspace\student-api-devops\grype-db:/root/.cache/grype" ^
-        anchore/grype:latest ^
-        sbom:/src/reports/sbom/sbom.json -o table
+  docker run --rm ^
+    -v "C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\student-api-devops:/src" ^
+    -v "C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\student-api-devops\\grype-db:/root/.cache/grype/db" ^
+    anchore/grype:latest ^
+    sbom:/src/reports/sbom/sbom.json -o table -c /src/.grype.yaml
+'''
 
-        REM Grype will exit non-zero if policy says fail-on high/critical (from .grype.yaml)
-      '''
     }
   }
 
