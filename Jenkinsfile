@@ -482,7 +482,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
       setlocal EnableExtensions EnableDelayedExpansion
 
       echo [Stage 12] ==============================
-      echo [Stage 12] Monitoring and Observability Gate (HD)
+      echo [Stage 12] Monitoring and Observability Gate
       echo [Stage 12] Target: student-api-prod on http://localhost:3002
       echo [Stage 12] ==============================
 
@@ -495,19 +495,36 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
       )
       echo [Stage 12] OK: Container is running
 
-      REM 12.2 Docker health status (if healthcheck exists)
+      REM 12.2 Wait for Docker healthcheck to become healthy (up to ~60s)
       set "HEALTH="
-      for /f "delims=" %%H in ('docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{end}}" student-api-prod') do set "HEALTH=%%H"
-      if "!HEALTH!"=="" (
-        echo [Stage 12] INFO: No Docker healthcheck present. Skipping health-status gate.
-      ) else (
-        echo [Stage 12] Docker health status: !HEALTH!
-        if /I not "!HEALTH!"=="healthy" (
-          echo ERROR: Container health is not healthy
-          docker inspect student-api-prod
+      set "MAX=30"
+      set "SLEEP=2"
+
+      for /L %%i in (1,1,%MAX%) do (
+        for /f "delims=" %%H in ('docker inspect -f "{{if .State.Health}}{{.State.Health.Status}}{{end}}" student-api-prod') do set "HEALTH=%%H"
+
+        if "!HEALTH!"=="" (
+          echo [Stage 12] INFO: No Docker healthcheck present. Skipping health-status gate.
+          goto AFTER_HEALTH
+        )
+
+        echo [Stage 12] Health: !HEALTH! (attempt %%i/%MAX%)
+
+        if /I "!HEALTH!"=="healthy" goto AFTER_HEALTH
+        if /I "!HEALTH!"=="unhealthy" (
+          echo ERROR: Container became UNHEALTHY
+          docker logs --tail 200 student-api-prod
           exit /b 1
         )
+
+        timeout /t %SLEEP% >nul
       )
+
+      echo ERROR: Health did not become healthy in time (last=!HEALTH!)
+      docker logs --tail 200 student-api-prod
+      exit /b 1
+
+      :AFTER_HEALTH
 
       REM 12.3 Restart-loop detection (fail if > 3)
       set "RESTARTS=0"
@@ -519,15 +536,16 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
         exit /b 1
       )
 
-      REM 12.4 Resource snapshot (evidence only)
+      REM 12.4 Resource snapshot (evidence)
       echo [Stage 12] Docker stats snapshot:
       docker stats --no-stream --format "table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}\\t{{.NetIO}}\\t{{.BlockIO}}" student-api-prod
 
-      REM 12.5 Endpoint checks
+      REM 12.5 Endpoint checks (external)
       echo [Stage 12] Checking /health...
       curl -fsS http://localhost:3002/health >nul
       if %errorlevel% neq 0 (
         echo ERROR: /health not reachable on port 3002
+        docker logs --tail 200 student-api-prod
         exit /b 1
       )
 
@@ -535,8 +553,10 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
       curl -fsS http://localhost:3002/students > students_prod.json
       if %errorlevel% neq 0 (
         echo ERROR: /students failed
+        docker logs --tail 200 student-api-prod
         exit /b 1
       )
+
       echo [Stage 12] OK: /students response:
       type students_prod.json
 
