@@ -378,26 +378,40 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
     }
   }
   
-      stage('10) Release (Promote to Prod)') {
-      steps {
+      stage('10) Release (Promote to Production)') {
+    steps {
         script {
-          if (isUnix()) {
-            sh "docker tag ${IMAGE_BUILD} ${IMAGE_RELEASE}"
-            sh """
-              docker rm -f ${PROD_NAME} >/dev/null 2>&1 || true
-              docker run -d --name ${PROD_NAME} -p ${PROD_PORT}:${CONTAINER_PORT} ${IMAGE_RELEASE}
-            """
-          } else {
-            bat "docker tag %IMAGE_BUILD% %IMAGE_RELEASE%"
             bat """
-              docker rm -f %PROD_NAME% >NUL 2>&1
-              docker run -d --name %PROD_NAME% -p %PROD_PORT%:%CONTAINER_PORT% %IMAGE_RELEASE%
-            """
-          }
-        }
-      }
-    }
+            echo [Stage 10] =========================================
+            echo [Stage 10] Production Promotion Started
+            echo [Stage 10] =========================================
 
+            echo [10.1] Tagging release image...
+            docker tag student-api:${BUILD_NUMBER} student-api:prod
+
+            echo [10.2] Stopping existing production container...
+            docker compose -f docker-compose.prod.yml down --remove-orphans
+
+            echo [10.3] Removing old production container (if exists)...
+            docker rm -f student-api-prod 2>nul
+
+            echo [10.4] Starting production container...
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            echo [10.5] Waiting for production health...
+
+            for /L %%i in (1,1,30) do (
+                curl -fsS http://localhost:3002/health && exit /b 0
+                timeout /t 2 >nul
+            )
+
+            echo ERROR: Production health check failed
+            docker logs --tail 200 student-api-prod
+            exit /b 1
+            """
+        }
+    }
+}
     stage('11) Production Health Check') {
       steps {
         script {
