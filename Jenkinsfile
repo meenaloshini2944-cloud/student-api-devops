@@ -330,15 +330,56 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
   }
 }
 
-    stage('9) Staging Health Check') {
-      steps {
-        script {
-          def url = "http://localhost:${STAGING_PORT}${HEALTH_PATH}"
-          if (isUnix()) sh "curl -fsS ${url}"
-          else          bat "powershell -NoProfile -Command \"(Invoke-WebRequest -UseBasicParsing '${url}').StatusCode\""
-        }
-      }
+   stage('9) Staging Stability Gate') {
+  steps {
+    script {
+      bat """
+        echo [Stage 9] Checking staging container...
+
+        docker ps --filter "name=student-api-staging" --filter "status=running" --format "{{.Names}}" | findstr student-api-staging
+        if %errorlevel% neq 0 (
+          echo ERROR: Staging container is not running
+          exit /b 1
+        )
+
+        echo [Stage 9] Checking /health endpoint...
+
+        powershell -NoProfile -Command ^
+          "$r = Invoke-WebRequest -UseBasicParsing 'http://localhost:3001/health'; ^
+           if ($r.StatusCode -ne 200) { exit 1 }"
+
+        if %errorlevel% neq 0 (
+          echo ERROR: Health endpoint failed
+          exit /b 1
+        )
+
+        echo [Stage 9] Checking health JSON status...
+
+        powershell -NoProfile -Command ^
+          "$r = Invoke-RestMethod 'http://localhost:3001/health'; ^
+           if ($r.status -ne 'UP') { exit 1 }"
+
+        if %errorlevel% neq 0 (
+          echo ERROR: Health JSON not reporting UP
+          exit /b 1
+        )
+
+        echo [Stage 9] Checking /students endpoint...
+
+        powershell -NoProfile -Command ^
+          "$r = Invoke-WebRequest -UseBasicParsing 'http://localhost:3001/students'; ^
+           if ($r.StatusCode -ne 200) { exit 1 }"
+
+        if %errorlevel% neq 0 (
+          echo ERROR: Students endpoint failed
+          exit /b 1
+        )
+
+        echo Stage 9 completed successfully
+      """
     }
+  }
+}
 
     stage('10) Release (Promote to Prod)') {
       steps {
