@@ -294,25 +294,37 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
 }
 
 
-    stage('7) Deploy to Staging') {
-      steps {
-        script {
-          if (isUnix()) {
-            sh """
-              docker rm -f ${STAGING_NAME} >/dev/null 2>&1 || true
-              docker run -d --name ${STAGING_NAME} -p ${STAGING_PORT}:${CONTAINER_PORT} ${IMAGE_BUILD}
-            """
-          } else {
-            bat """
-              docker rm -f %STAGING_NAME% >NUL 2>&1
-              docker run -d --name %STAGING_NAME% -p %STAGING_PORT%:%CONTAINER_PORT% %IMAGE_BUILD%
-            """
-          }
-        }
-      }
-    }
+   stage('7) Deploy to Staging (Docker Compose)') {
+  steps {
+    script {
+      bat """
+        echo [Stage 7.1] Deploy to staging with Docker Compose...
+        docker compose -f docker-compose.staging.yml down
+        docker compose -f docker-compose.staging.yml up -d --remove-orphans
 
-    stage('8) Staging Health Check') {
+        echo [Stage 7.2] Wait for health...
+        for /L %%i in (1,1,30) do (
+          curl -fsS http://localhost:3001/health && exit /b 0
+          timeout /t 2 >nul
+        )
+        echo Staging health check failed.
+        docker compose -f docker-compose.staging.yml ps
+        docker logs --tail 200 student-api-staging
+        exit /b 1
+      """
+    }
+  }
+}
+    stage('8) Staging Smoke Test') {
+  steps {
+    bat """
+      echo [Stage 8] Smoke test /students endpoint...
+      curl -fsS http://localhost:3001/students
+    """
+  }
+}
+
+    stage('9) Staging Health Check') {
       steps {
         script {
           def url = "http://localhost:${STAGING_PORT}${HEALTH_PATH}"
@@ -322,7 +334,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
       }
     }
 
-    stage('9) Release (Promote to Prod)') {
+    stage('10) Release (Promote to Prod)') {
       steps {
         script {
           if (isUnix()) {
@@ -342,7 +354,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
       }
     }
 
-    stage('10) Production Health Check') {
+    stage('11) Production Health Check') {
       steps {
         script {
           def url = "http://localhost:${PROD_PORT}${HEALTH_PATH}"
