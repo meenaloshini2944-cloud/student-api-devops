@@ -472,3 +472,4 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
   }
 }
 }
+}
