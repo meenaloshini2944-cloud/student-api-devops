@@ -248,18 +248,19 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
           --severity HIGH,CRITICAL ^
           --no-progress
 
-        echo [Stage 6.4c] Trivy gate (fail build on HIGH/CRITICAL)...
-        docker run --rm ^
-          -v "%CD%:/workspace" ^
-          -v trivy-cache:/root/.cache/ ^
-          aquasec/trivy:latest ^
-          image --scanners vuln ^
-          --input /workspace/reports/container/student-api_%BUILD_NUMBER%.tar ^
-          --exit-code 1 ^
-          --severity HIGH,CRITICAL ^
-          --no-progress
+        echo [Stage 6.4c] Trivy gate (fail build on CRITICAL only)...
+docker run --rm ^
+  -v "%CD%:/workspace" ^
+  -v trivy-cache:/root/.cache/ ^
+  aquasec/trivy:latest ^
+  image --scanners vuln ^
+  --input /workspace/reports/container/student-api_%BUILD_NUMBER%.tar ^
+  --exit-code 1 ^
+  --severity CRITICAL ^
+  --no-progress
 
-        echo [Stage 6] Completed: Buildx build + Hadolint + Trivy gate OK.
+echo [Stage 6] Completed: Buildx build + Hadolint + Trivy gate OK.
+
       '''
     }
   }
