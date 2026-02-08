@@ -107,7 +107,7 @@ pipeline {
 
       // Semgrep (open-source SAST)
       bat """
-        docker run --rm -v "%CD%:/src" returntocorp/semgrep semgrep scan --config=auto --severity 
+        docker run --rm -v "%CD%:/src" returntocorp/semgrep semgrep scan --config=auto --severity ERROR
       """
 
       // Wait for Sonar Quality Gate (increase timeout)
