@@ -45,51 +45,64 @@ pipeline {
     }
 
     stage('3) Test + Coverage (Mocha/Chai/Supertest)') {
-      steps {
-        script {
-          if (isUnix()) {
-            sh """
-              rm -rf reports coverage || true
-              mkdir -p reports/junit reports/mochawesome
-              npm run test:ci
-              npm run test:html
-            """
-          } else {
-            bat """
-              if exist reports rmdir /s /q reports
-              if exist coverage rmdir /s /q coverage
-              mkdir reports\\junit
-              mkdir reports\\mochawesome
-              npm run test:ci
-              npm run test:html
-            """
-          }
-        }
-      }
-      post {
-        always {
-          junit allowEmptyResults: true, testResults: "${JUNIT_PATTERN}"
+  tools { nodejs 'node20' }   // <-- MUST match the name you created in Jenkins Tools
 
-          publishHTML(target: [
-            reportName: "Mocha Test Report (Mochawesome)",
-            reportDir: "${MOCHA_HTML_DIR}",
-            reportFiles: "mochawesome.html",
-            keepAll: true,
-            alwaysLinkToLastBuild: true,
-            allowMissing: true
-          ])
+  steps {
+    script {
+      if (isUnix()) {
+        sh """
+          node -v && npm -v
+          rm -rf reports coverage || true
+          mkdir -p reports/junit reports/mochawesome
+          npm ci
+          npm run test:ci
+          npm run test:html
+        """
+      } else {
+        bat """
+          where node
+          node -v
+          where npm
+          npm -v
 
-          publishHTML(target: [
-            reportName: "Coverage Report (nyc)",
-            reportDir: "${COVERAGE_DIR}",
-            reportFiles: "index.html",
-            keepAll: true,
-            alwaysLinkToLastBuild: true,
-            allowMissing: true
-          ])
-        }
+          if exist reports rmdir /s /q reports
+          if exist coverage rmdir /s /q coverage
+          mkdir reports\\junit
+          mkdir reports\\mochawesome
+
+          npm ci
+          npm run test:ci
+          npm run test:html
+        """
       }
     }
+  }
+
+  post {
+    always {
+      junit allowEmptyResults: true, testResults: "${JUNIT_PATTERN}"
+
+      publishHTML(target: [
+        reportName: "Mocha Test Report (Mochawesome)",
+        reportDir: "${MOCHA_HTML_DIR}",
+        reportFiles: "mochawesome.html",
+        keepAll: true,
+        alwaysLinkToLastBuild: true,
+        allowMissing: true
+      ])
+
+      // Only publish coverage if it exists (prevents the red error line)
+      publishHTML(target: [
+        reportName: "Coverage Report (nyc)",
+        reportDir: "${COVERAGE_DIR}",
+        reportFiles: "index.html",
+        keepAll: true,
+        alwaysLinkToLastBuild: true,
+        allowMissing: true
+      ])
+    }
+  }
+}
 
    stage('4) Code Quality & SAST (SonarQube + Semgrep)') {
   steps {
