@@ -140,26 +140,26 @@ pipeline {
         )
       '''
 
-      // ---------- 5.2 OWASP Dependency-Check ----------
-      // Uses Docker image so you don't need Java/Dependency-Check installed on Jenkins
-      // Output: reports/dependency-check (HTML + XML + JSON)
-      bat '''
-        echo [Stage 5.2] Running OWASP Dependency-Check...
-        if not exist reports\\dependency-check mkdir reports\\dependency-check
+// ---------- 5.2 OWASP Dependency-Check ----------
+withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
 
-        docker run --rm ^
-          -v "%CD%:/src" ^
-          owasp/dependency-check:latest ^
-          --scan /src/package.json ^
-          --scan /src/package-lock.json ^
-          --format "ALL" ^
-          --out /src/reports/dependency-check ^
-          --suppression /src/dependency-check-suppressions.xml ^
-          --nvdApiKey "" ^
-          --failOnCVSS 7
+  bat '''
+    echo [Stage 5.2] Running OWASP Dependency-Check with NVD API Key...
 
-        REM Dependency-Check returns non-zero if CVSS threshold hit. That’s intended.
-      '''
+    if not exist reports\\dependency-check mkdir reports\\dependency-check
+
+    docker run --rm ^
+      -v "C:\\ProgramData\\Jenkins\\.jenkins\\workspace\\student-api-devops:/src" ^
+      owasp/dependency-check:latest ^
+      --scan /src/package.json ^
+      --scan /src/package-lock.json ^
+      --format "ALL" ^
+      --out /src/reports/dependency-check ^
+      --suppression /src/dependency-check-suppressions.xml ^
+      --nvdApiKey %NVD_KEY% ^
+      --failOnCVSS 7
+  '''
+}
 
       // ---------- 5.3 Grype scan on SBOM ----------
       // Scans the SBOM you generated (sbom.json)
