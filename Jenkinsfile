@@ -330,7 +330,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
   }
 }
 
-   sstage('9) Staging Stability Gate') {
+   stage('9) Staging Stability Gate') {
   steps {
     script {
       bat '''
