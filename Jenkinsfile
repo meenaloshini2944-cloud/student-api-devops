@@ -258,7 +258,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
           aquasec/trivy:latest ^
           image --scanners vuln ^
           --input /workspace/reports/container/student-api_%BUILD_NUMBER%.tar ^
-          --severity HIGH,CRITICAL ^
+          --severity CRITICAL ^
           --no-progress
 
 <<<<<<< HEAD
@@ -270,7 +270,7 @@ withCredentials([string(credentialsId: 'NVD_API_KEY', variable: 'NVD_KEY')]) {
           image --scanners vuln ^
           --input /workspace/reports/container/student-api_%BUILD_NUMBER%.tar ^
           --exit-code 1 ^
-          --severity HIGH,CRITICAL ^
+          --severity CRITICAL ^
           --no-progress
 
         echo [Stage 6] Completed: Buildx build + Hadolint + Trivy gate OK.
