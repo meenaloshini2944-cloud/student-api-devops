@@ -23,9 +23,6 @@ pipeline {
     MOCHA_HTML_DIR = "reports/mochawesome"
     COVERAGE_DIR   = "coverage"
   }
-tools {
-  nodejs 'Node_20'
-}
 
   stages {
 
