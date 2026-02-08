@@ -197,7 +197,7 @@ pipeline {
 }
 
 
-    stage('6) Build Artefact + Container QA (Buildx + Hadolint + Trivy)') {
+   stage('6) Build Artefact + Container QA (Buildx + Hadolint + Trivy)') {
   steps {
     script {
       bat '''
@@ -207,17 +207,14 @@ pipeline {
         if not exist reports\\container\\trivy mkdir reports\\container\\trivy
 
         echo [Stage 6.1] Hadolint - Dockerfile quality gate...
-        REM Lint Dockerfile (fails build on issues)
         docker run --rm -i hadolint/hadolint < Dockerfile
 
         echo [Stage 6.2] Enable Docker BuildKit / Buildx...
-        REM Ensure buildx builder exists and is used
         docker buildx version
         docker buildx create --name jenkins-builder --use 2>NUL || docker buildx use jenkins-builder
         docker buildx inspect --bootstrap
 
-        echo [Stage 6.3] Build image with Buildx + cache...
-        REM Use local cache folder (persisted in workspace)
+        echo [Stage 6.3] Build image with Buildx + cache (LOAD into local Docker)...
         if not exist .buildx-cache mkdir .buildx-cache
 
         docker buildx build ^
@@ -228,36 +225,39 @@ pipeline {
           --load ^
           .
 
-        echo [Stage 6.4] Trivy image scan (report + gate)...
-        REM Trivy scan -> JSON + HTML + console summary
-        REM (1) JSON report for evidence
+        echo [Stage 6.3b] Export image to tar (so Trivy can scan without Docker socket)...
+        docker save -o reports\\container\\student-api_%BUILD_NUMBER%.tar student-api:%BUILD_NUMBER%
+
+        echo [Stage 6.4] Trivy scan using --input (JSON evidence)...
         docker run --rm ^
           -v "%CD%:/workspace" ^
           -v trivy-cache:/root/.cache/ ^
           aquasec/trivy:latest ^
           image --scanners vuln ^
+          --input /workspace/reports/container/student-api_%BUILD_NUMBER%.tar ^
           --format json ^
-          --output /workspace/reports/container/trivy/trivy-image.json ^
-          student-api:%BUILD_NUMBER%
+          --output /workspace/reports/container/trivy/trivy-image.json
 
-        REM (2) Human-friendly table in console
+        echo [Stage 6.4b] Trivy console summary (HIGH/CRITICAL)...
         docker run --rm ^
+          -v "%CD%:/workspace" ^
           -v trivy-cache:/root/.cache/ ^
           aquasec/trivy:latest ^
           image --scanners vuln ^
+          --input /workspace/reports/container/student-api_%BUILD_NUMBER%.tar ^
           --severity HIGH,CRITICAL ^
-          --no-progress ^
-          student-api:%BUILD_NUMBER%
+          --no-progress
 
-        REM (3) Fail pipeline if HIGH/CRITICAL found (rubric-friendly gate)
+        echo [Stage 6.4c] Trivy gate (fail build on HIGH/CRITICAL)...
         docker run --rm ^
+          -v "%CD%:/workspace" ^
           -v trivy-cache:/root/.cache/ ^
           aquasec/trivy:latest ^
           image --scanners vuln ^
+          --input /workspace/reports/container/student-api_%BUILD_NUMBER%.tar ^
           --exit-code 1 ^
           --severity HIGH,CRITICAL ^
-          --no-progress ^
-          student-api:%BUILD_NUMBER%
+          --no-progress
 
         echo [Stage 6] Completed: Buildx build + Hadolint + Trivy gate OK.
       '''
